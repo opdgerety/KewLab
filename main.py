@@ -1,10 +1,7 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, simpledialog
 from PIL import ImageTk, Image
 import os
-
-test = 'hi'
-print(test)
 
 class CustomTreeView(ttk.Treeview):
     def __init__(self, master,**kw) -> None:
@@ -223,7 +220,6 @@ class Cue():
     def updateVisuals(self):
         self.rowInstance.item(self.iid,values=self.contense())
 
-
 class Main():
     def __init__(self) -> None:
         self.dirPath = os.path.dirname(os.path.abspath(__file__))
@@ -407,7 +403,7 @@ class Main():
         self.topbar.grid_columnconfigure(1,weight=8)
         button_border = tk.Frame(self.topbar, highlightbackground = "lime", highlightthickness = 4)
         button_border.grid(row=0,column=0,sticky="nesw",pady=10)
-        goButton=tk.Button(button_border,text="GO",bg="gray",bd=0,font=("Bold",30),command=self.startPlay)
+        goButton=tk.Button(button_border,text="GO",background="#3d3d3d",bd=0,foreground='white',font=("Bold",50),command=self.startPlay)
         button_border.grid_rowconfigure(0,weight=1)
         button_border.grid_columnconfigure(0,weight=1)
         goButton.grid(row=0,column=0,sticky="nesw")
@@ -452,7 +448,7 @@ class Main():
         self.bottombar.grid_columnconfigure(0,weight=1)
         self.bottombar.grid_rowconfigure(0,weight=1, uniform='row')
         self.bottombar.grid_rowconfigure(1,weight=7, uniform='row')
-        accordionTitles=tk.Frame(self.bottombar, bg="#313131",highlightcolor="white",bd=1)
+        accordionTitles=tk.Frame(self.bottombar, bg="#4d4d4d",highlightcolor="white",bd=1)
         accordionTitles.grid(row=0,column=0,sticky="nesw")
         accordionTitles.grid_rowconfigure(0,weight=1)
         for _ in range(10):
@@ -559,7 +555,23 @@ class Main():
         self.tree.bind("<<TreeviewOpen>>",lambda e:self.openParent())
         self.tree.bind("<<TreeviewClose>>",lambda e:self.openParent())
         self.tree.bind("<space>",lambda e:self.startPlay())
+
+        self.tree.bind("<Control-R>",self.renumberCues)
+    
+    def renumberCues(self,e):
+        if not (start:=simpledialog.askfloat('Cue renumber','Start')): return
+        if not (increment:=simpledialog.askfloat('Cue renumber','Increment')): return
+        print(start,increment)
+        print('renum')
+        # simpledialog.askstring(title="Renumber settings",prompt="Start Value",)
         
+        v = start
+        for x in self.tree.idToInstance.values():
+            print(f'{x} is x')
+            x.changeValue('cueNumber',f'{float(v):.2f}')
+            v+=increment
+            
+
     def loadScene(self,scene) -> None:
         "Loads a scene based of scene number"
         self.scene.destroy()
