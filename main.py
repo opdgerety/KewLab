@@ -16,7 +16,7 @@ class CustomTreeView(ttk.Treeview):
         self.insert(parent, index, **kw, open=True)
 
     def getInstanceFromId(self, id):
-        return self.idToInstance[id]
+        return self.idToInstance[id] if id else ''
 
 class TreeViewDragHandler():
     def __init__(self, tree, scene, tk) -> None:
