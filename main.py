@@ -27,6 +27,7 @@ class TreeViewDragHandler():
         self.bdown=False
         self.bdownCount=0
         self.holding=False
+        self.isParent=False
         columns = ("group",'number', 'name', 'prewait', 'time',"autoplay")
         self.visual_drag= CustomTreeView(scene, columns=columns,height=1,show="")
         self.visual_drag.column("#1", minwidth=30, width=30, stretch="NO")
@@ -38,6 +39,9 @@ class TreeViewDragHandler():
         tree.bind("<Button-1>", self.bDown) 
         tree.bind("<ButtonRelease-1>",self.bUp)
     def bDown(self,event):
+        region = self.tree.identify("region", event.x, event.y)
+        if region == "heading":
+            return
         self.bdown=True
         self.tk.after(20,lambda:self.bDownHeld(event))
     def bDownHeld(self,event):
@@ -62,9 +66,11 @@ class TreeViewDragHandler():
             if not row["values"]:
                 self.holding=False
                 return
+            self.isParent=False
             self.visual_drag.delete(*self.visual_drag.get_children())
             self.visual_drag.insert('', tk.END, values=row["values"],iid=self.iid)
             for item in tv.get_children(tv.selection()):
+                self.isParent=True
                 self.visual_drag.insert(self.iid, tk.END, values=tv.item(item)["values"],iid=item)
             self.visual_drag.place(in_=tv,y=0, x=0,relwidth=1)
             parent=self.tree.parent(self.iid)
@@ -109,8 +115,6 @@ class TreeViewDragHandler():
             #     parent=rows[0][rows[0].index("dropArea")-1]
             tv.getInstanceFromId(parent).setChildParent("Parent",True)
             tv.getInstanceFromId(self.iid[0]).setChildParent("Child",True)
-        elif self.indentation==2:
-            parent=""
         self.visual_drag.place_forget()
         for item in self.tree.get_children():
             if self.tree.item(item)['tags'] and self.tree.item(item)['tags'][0][:8]=="dropArea":
@@ -125,7 +129,7 @@ class TreeViewDragHandler():
         tv = event.widget
         if self.visual_drag.winfo_ismapped():
             y = event.y
-            if event.x-self.startx<25:
+            if event.x-self.startx<25 or self.isParent:
                 self.visual_drag.place_configure(y=y,x=0)
                 self.indentation=0
             elif event.x-self.startx>25:
@@ -149,9 +153,7 @@ class TreeViewDragHandler():
                     for item in self.tree.get_children(item):
                         if item=="dropArea":
                             self.tree.delete(item)
-            # row2=self.tree.get_children()[self.tree.get_children().index(self.tree.identify_row(y=y))]
             row2=self.tree.identify_row(y=y)
-            # print(row2,self.tree.get_children(),self.tree.identify_row(y=y))
             parent=""
             if self.indentation==1:
                 if self.tree.parent(row2):
@@ -173,12 +175,13 @@ class TreeViewDragHandler():
         
 class Cue():
     "Stores the data for a cue"
-    def __init__(self,cueNumber=0,name="Unnamed Cue",prewait=0.0,time=0.0,autoplay="None",open=True,isParent=False,isChild=False,isChildChild=False) -> None:
+    def __init__(self,cueNumber=0,name="Unnamed Cue",prewait=0.0,time=0.0,autoplay="None",open=True,isParent=False,isChild=False,tk=None) -> None:
         self.values={"cueNumber":cueNumber,"cueName":f"Cue test number {name}","prewait":prewait,"time":time,"Autoplay":autoplay}
         self.open=open
+        self.tk=tk
+        self.prewait=prewait
         self.isParent=isParent
         self.isChild=isChild
-        self.isChildChild=isChildChild
     def setRow(self,row,iid) -> None:
         "Provides an instance of row"
         self.rowInstance=row
@@ -190,8 +193,6 @@ class Cue():
             self.isChild=val
         self.updateVisuals()
     def nameIndent(self):
-        if self.isChildChild:
-            return "                "+self.values["cueName"]
         if self.isChild:
             return "        "+self.values["cueName"]
         return self.values["cueName"]
@@ -208,11 +209,13 @@ class Cue():
     def sToTime(self,s):
         return f"{int(s/60):02d}:{int(s%60):02d}.{f'{(s-int(s)):.3f}'[2:]}"
     def contense(self):
-        return (self.openSymbol(),str(self.values["cueNumber"]),self.nameIndent(),self.sToTime(self.values["prewait"]),self.sToTime(self.values["time"]),({"None":"","Follow":"o"}[self.values["Autoplay"]]))
+        return (self.openSymbol(),str(self.values["cueNumber"]),self.nameIndent(),self.sToTime(self.values["prewait"]),self.sToTime(self.values["time"]),({"None":"","Follow":"⇣","Follow When Done":"↓"}[self.values["Autoplay"]]))
     def getInstance(self):
         return self
     def changeValue(self,name,newValue):
         self.values[name]=newValue
+        if name=="prewait":
+            self.prewait=newValue
         self.updateVisuals()
     def updateVisuals(self):
         self.rowInstance.item(self.iid,values=self.contense())
@@ -308,22 +311,79 @@ class Main():
         self.autoplayInputVar.set(q.values["Autoplay"])
         self.numberInput.delete(0,"end")
         self.numberInput.insert(0,q.values["cueNumber"])
-    def play(self):
+        self.prewaitInput.delete(0,"end")
+        self.prewaitInput.insert(0,q.values["prewait"])
+    def play(self,q):
+        print("Started counting",q.values["cueName"])
+    def prewait(self,q,parent):
+        q.values["prewait"]-=0.1
+        q.updateVisuals()
+        if q.values["prewait"]<=0:
+            q.values["prewait"]=q.prewait
+            q.updateVisuals()
+            self.play(q)
+            self.tk.after(int(q.values["time"]*100),lambda:self.cueEnded(q,parent))
+        else:
+            self.tk.after(100,lambda:self.prewait(q,parent))
+    def cueEnded(self,q,parent):
+        if q.values["Autoplay"]=="Follow When Done":
+            if self.tree.get_children(q.iid):
+                self.startCue(self.tree.getInstanceFromId(self.tree.get_children(q.iid)[0]),parent=q.iid)
+            else:
+                rows=self.tree.get_children()
+                if q.iid in rows:
+                    self.startPlay()
+                else:
+                    rows=self.tree.get_children(parent)
+                    if q.iid not in rows:
+                        return
+                    i=rows.index(q.iid)
+                    if i!=len(rows)-1:
+                        self.startCue(self.tree.getInstanceFromId(rows[i+1]),parent)
+                    elif not self.tree.focus() in rows:
+                        self.startPlay()
+    def startCue(self,q,parent=""):
+        if q.values["prewait"]<=0:
+            self.prewait(q,parent)
+        else:
+            self.tk.after(100,lambda:self.prewait(q,parent))
+        if q.values["Autoplay"]=="Follow" or (self.tree.get_children(q.iid) and q.values["Autoplay"]=="None"):
+            if self.tree.get_children(q.iid):
+                self.startCue(self.tree.getInstanceFromId(self.tree.get_children(q.iid)[0]),parent=q.iid)
+            else:
+                rows=self.tree.get_children()
+                if q.iid in rows:
+                    self.startPlay()
+                else:
+                    rows=self.tree.get_children(parent)
+                    i=rows.index(q.iid)
+                    if i!=len(rows)-1:
+                        self.startCue(self.tree.getInstanceFromId(rows[i+1]),parent)
+                    elif not self.tree.focus() in rows:
+                        self.startPlay()
+    def startPlay(self):
         if self.tree.focus()=="":
             return
         q =self.tree.getInstanceFromId(self.tree.focus())
-        print(f"Now playing {q.values['cueName']}")
+        # print(f"Now playing {q.values['cueName']}")
         self.selectNext()
+        self.startCue(q)
     def selectNext(self):
         rows=[self.tree.get_children()][0]
         try:
             self.tree.focus(rows[min(rows.index(self.tree.focus())+1,len(rows))])
         except ValueError:
-            pass
+            try:
+                rows=[self.tree.get_children(self.tree.parent(self.tree.focus()))][0]
+                self.tree.focus(rows[min(rows.index(self.tree.focus())+1,len(rows))])
+            except ValueError:
+                pass
+            except IndexError:
+                pass
         self.selectCue(None)
     def createNewCue(self,cueNumber=0,name="New Cue",prewait=0.0,time=0.0,autoplay="None") -> None:
         "Creates a new cue in treeview"
-        q=Cue(cueNumber=cueNumber,name=name,prewait=prewait,time=time,autoplay=autoplay)
+        q=Cue(cueNumber=cueNumber,name=name,prewait=prewait,time=time,autoplay=autoplay,tk=self.tk)
         iid=self.addToTree(q.contense(),q.getInstance())
         q.setRow(self.tree,iid)
 
@@ -344,7 +404,7 @@ class Main():
         self.topbar.grid_columnconfigure(1,weight=8)
         button_border = tk.Frame(self.topbar, highlightbackground = "lime", highlightthickness = 4)
         button_border.grid(row=0,column=0,sticky="nesw",pady=10)
-        goButton=tk.Button(button_border,text="GO",bg="gray",bd=0,font=("Bold",30),command=self.play)
+        goButton=tk.Button(button_border,text="GO",bg="gray",bd=0,font=("Bold",30),command=self.startPlay)
         button_border.grid_rowconfigure(0,weight=1)
         button_border.grid_columnconfigure(0,weight=1)
         goButton.grid(row=0,column=0,sticky="nesw")
@@ -434,7 +494,7 @@ class Main():
         self.prewaitInput.grid(row=2,column=1,sticky="we")
         self.autoplayInputVar = tk.StringVar()
         self.autoplayInputVar.set("None")
-        autoplayInput=tk.OptionMenu( self.bottomBarBasicTab , self.autoplayInputVar , *["None","Follow"])
+        autoplayInput=tk.OptionMenu( self.bottomBarBasicTab , self.autoplayInputVar , *["None","Follow","Follow When Done"])
         self.autoplayInputVar.trace("w", lambda name, index,mode, var=self.autoplayInputVar: self.cueValueChange("autoplay"))
         autoplayInput.configure(indicatoron=0, compound=tk.RIGHT, image="")
         autoplayInput.config(borderwidth=0,bg="#313131",activebackground="#313131",activeforeground="white",bd=0,fg="white",highlightthickness=0)
@@ -495,7 +555,7 @@ class Main():
         self.tree.bind("<<TreeviewSelect>>",self.selectCue)
         self.tree.bind("<<TreeviewOpen>>",lambda e:self.openParent())
         self.tree.bind("<<TreeviewClose>>",lambda e:self.openParent())
-        self.tree.bind("<space>",lambda e:self.play())
+        self.tree.bind("<space>",lambda e:self.startPlay())
         
     def loadScene(self,scene) -> None:
         "Loads a scene based of scene number"
