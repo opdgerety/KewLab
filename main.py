@@ -3,6 +3,9 @@ from tkinter import ttk
 from PIL import ImageTk, Image
 import os
 
+test = 'hi'
+print(test)
+
 class CustomTreeView(ttk.Treeview):
     def __init__(self, master,**kw) -> None:
         super().__init__(master, **kw)
@@ -408,13 +411,13 @@ class Main():
         button_border.grid_rowconfigure(0,weight=1)
         button_border.grid_columnconfigure(0,weight=1)
         goButton.grid(row=0,column=0,sticky="nesw")
-        topInfoFrame=tk.Frame(self.topbar, bg="#3d3d3d",highlightcolor="white")
+        topInfoFrame=tk.Frame(self.topbar, bg="#3d3d3d",highlightcolor="green")
         topInfoFrame.grid(row=0,column=1,sticky="nesw")
         topInfoFrame.grid_rowconfigure(0,weight=1)
         topInfoFrame.grid_columnconfigure(0,weight=1)
         var = tk.StringVar()
         var.trace("w", lambda name, index,mode, var=var: self.cueValueChange("title"))
-        self.qtitle=tk.Entry(topInfoFrame,textvariable=var,font=(30),bg="gray")
+        self.qtitle=tk.Entry(topInfoFrame,textvariable=var,font=(30),bg="#3d3d3d")
         self.qtitle.grid(row=0,column=0,sticky="new",padx=10,pady=40)
         topTools=tk.Frame(self.topbar, bg="#3d3d3d",highlightcolor="white")
         topTools.grid(row=1,column=0,sticky="nesw",pady=10,columnspan=2)
