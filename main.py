@@ -449,7 +449,7 @@ class Main():
             except IndexError: pass
         self.selectCue(None)
 
-    def deleteRow(self,*items) --> None:
+    def deleteRow(self,*items) -> None:
         for iid in items:
             self.idToInstance.pop(iid)
             super().delete(iid)
