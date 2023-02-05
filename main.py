@@ -466,8 +466,12 @@ class Main():
             item=rows[min(rows.index(self.tree.focus())+1, len(rows)-1)]
             iOpen=self.tree.getInstanceFromId(item).open
             self.tree.focus(item)
-            self.tree.item(item,open=(not iOpen))
-            self.openParent()
+            if self.tree.get_children(item):
+                self.tree.item(item,open=(not iOpen))
+                self.openParent()
+            else:
+                self.tree.item(item,open=False)
+                self.openParent()
         except ValueError:
             try:
                 rows = [self.tree.get_children(self.tree.parent(self.tree.focus()))][0]
