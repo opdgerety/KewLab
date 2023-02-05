@@ -285,7 +285,7 @@ class Main():
         self.loadScene(0)
         self.tk.mainloop()
 
-        self.tk.bind('<Escape>', self.stopAllAudio)
+        self.scene.bind('<Escape>', self.stopAllAudio)
 
     def relativeSize(self, dir, amount=1) -> float:
         "Returns number of pixels to size something based off screen size"
@@ -448,6 +448,14 @@ class Main():
             except ValueError: pass
             except IndexError: pass
         self.selectCue(None)
+
+    def deleteRow(self,*items) --> None:
+        for iid in items:
+            self.idToInstance.pop(iid)
+            super().delete(iid)
+            for child in self.get_children(iid):
+                self.idToInstance.pop(child)
+                super().delete(child)
 
     def newCueFromButton(self):
         nums = []
