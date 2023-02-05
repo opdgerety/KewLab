@@ -49,6 +49,12 @@ class TreeViewDragHandler():
         tree.bind("<Button-1>", self.bDown)
         tree.bind("<ButtonRelease-1>", self.bUp)
 
+    def failsafe(self,event):
+        if self.bDown:
+            self.tk.after(1000,lambda:self.failsafe(event))
+        elif self.holding:
+            self.bUp(event)
+
     def bDown(self, event):
         region = self.tree.identify("region", event.x, event.y)
         if region == "heading":
@@ -91,6 +97,7 @@ class TreeViewDragHandler():
             if parent:
                 if self.tree.get_children(parent) == ():
                     self.tree.getInstanceFromId(parent).setChildParent("Parent", False)
+            self.failself(event)
 
     def bUp(self, event):
         self.bdown = False
@@ -123,12 +130,14 @@ class TreeViewDragHandler():
         tv.insert(parent, rowNum, values=item, iid=self.iid, tag=(self.visual_drag.item(self.visual_drag.get_children()[0])["tags"],))
         for item in self.visual_drag.get_children(self.iid):
             tv.insert(self.iid, tk.END, values=self.visual_drag.item(item)["values"], iid=item, tag=(self.visual_drag.item(item)["tags"],))
-        if self.indentation == 0: tv.getInstanceFromId(self.iid[0]).setChildParent("Child", False)
+        if self.indentation == 0 or not parent: tv.getInstanceFromId(self.iid[0]).setChildParent("Child", False)
         elif self.indentation == 1:
             # if rows[0].index("dropArea")!=0:
             #     parent=rows[0][rows[0].index("dropArea")-1]
-            tv.getInstanceFromId(parent).setChildParent("Parent", True)
-            tv.getInstanceFromId(self.iid[0]).setChildParent("Child", True)
+            if parent:
+                tv.getInstanceFromId(parent).setChildParent("Parent", True)
+            if tv.getInstanceFromId(self.iid[0]):
+                tv.getInstanceFromId(self.iid[0]).setChildParent("Child", True)
         self.visual_drag.place_forget()
         for item in self.tree.get_children():
             if self.tree.item(item)['tags'] and self.tree.item(item)['tags'][0][:8] == "dropArea":
@@ -436,7 +445,7 @@ class Main():
     def selectNext(self):
         rows = [self.tree.get_children()][0]
         try:
-            item=rows[min(rows.index(self.tree.focus())+1, len(rows))]
+            item=rows[min(rows.index(self.tree.focus())+1, len(rows)-1)]
             iOpen=self.tree.getInstanceFromId(item).open
             self.tree.focus(item)
             self.tree.item(item,open=(not iOpen))
@@ -448,6 +457,7 @@ class Main():
             except ValueError: pass
             except IndexError: pass
         self.selectCue(None)
+        self.tree.see(self.tree.focus())
 
     def deleteRow(self,*items) -> None:
         for iid in items:
@@ -662,13 +672,11 @@ class Main():
         q = self.tree.getInstanceFromId(self.tree.focus())
         if (path := filedialog.askopenfilename(title='Select file to add', filetypes=(('Sound', '*.ogg *.wav *.mp3'), ('All files', '*.*')))):
             q.path = path
-            print(path)
             if q.values['cueName'].split(' ')[1] == 'test' or q.values['cueName'] == '':
                 q.values['cueName'] = f"Play {path.split('/')[-1]}"
             # x = pa.get_duration(*pa.load(path))
             # print(x)
             # print(mediainfo(path)['duration'])
-            print(q.values['time'])
             q.values['time'] = sf.info(path).duration
             self.fileInput.config(text=path)
             q.updateVisuals() #ABC
