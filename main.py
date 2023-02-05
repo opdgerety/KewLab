@@ -208,6 +208,7 @@ class Cue():
         self.open = open
         self.tk = tk
         self.prewait = prewait
+        self.duration=time
         self.isParent = isParent
         self.isChild = isChild
         self.path = None
@@ -253,6 +254,8 @@ class Cue():
         self.values[name] = newValue
         if name == "prewait":
             self.prewait = newValue
+        if name == "time":
+            self.duration = newValue
         self.updateVisuals()
 
     def updateVisuals(self):
@@ -375,19 +378,23 @@ class Main():
                 pygame.mixer.Channel(channel).stop()
         self.tk.after(200,self.finnishedStopping)
 
-    def checkAudioFinnished(self,channel,callback):
+    def checkAudioFinnished(self,channel,callback,q):
         if not pygame.mixer.Channel(channel).get_busy():
             self.activeChannels.append(channel)
+            q.changeValue("time",q.duration)
             callback()
         else:
-            self.tk.after(100,lambda:self.checkAudioFinnished(channel,callback))
+            q.values["time"]-=0.1
+            q.updateVisuals()
+            self.tk.after(100,lambda:self.checkAudioFinnished(channel,callback,q))
 
     def playAudio(self, q, callback):
         channel=self.activeChannels.pop()
         if (p:=q.path):
             pygame.mixer.Channel(channel).play(pygame.mixer.Sound(p))
         if (t:=q.values['time']) == 0: t+=1
-        self.checkAudioFinnished(channel,callback)
+        # self.checkAudioFinnished(channel,callback)
+        self.tk.after(100,lambda:self.checkAudioFinnished(channel,callback,q))
         # self.tk.after(int(math.ceil(t*1000)), callback)
 
     def play(self, q, parent):
@@ -698,7 +705,7 @@ class Main():
             # x = pa.get_duration(*pa.load(path))
             # print(x)
             # print(mediainfo(path)['duration'])
-            q.values['time'] = sf.info(path).duration
+            q.changeValue('time',sf.info(path).duration)
             self.fileInput.config(text=path)
             q.updateVisuals() #ABC
         else: return
