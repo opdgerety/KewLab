@@ -97,7 +97,7 @@ class TreeViewDragHandler():
             if parent:
                 if self.tree.get_children(parent) == ():
                     self.tree.getInstanceFromId(parent).setChildParent("Parent", False)
-            self.failself(event)
+            self.failsafe(event)
 
     def bUp(self, event):
         self.bdown = False
@@ -267,6 +267,9 @@ class Main():
         self.dirPath = os.path.dirname(os.path.abspath(__file__))
         self.selectedCellClass = None
         self.globFont = 'aerial'
+        pygame.mixer.set_num_channels(100)
+        self.activeChannels=list(range(100))
+        self.stopping=False
 
     def setTreeColour(self) -> None:
         "Sets treeview colour"
@@ -293,8 +296,6 @@ class Main():
         ttk.Style().configure("Treeview", background="black", foreground="white", fieldbackground="black")
         self.loadScene(0)
         self.tk.mainloop()
-
-        self.scene.bind('<Escape>', self.stopAllAudio)
 
     def relativeSize(self, dir, amount=1) -> float:
         "Returns number of pixels to size something based off screen size"
@@ -359,17 +360,35 @@ class Main():
         self.numberInput.insert(0, q.values["cueNumber"])
         self.prewaitInput.delete(0, "end")
         self.prewaitInput.insert(0, q.values["prewait"])
+        if q.path:
+            self.fileInput.config(text=q.path)
+        else:
+            self.fileInput.config(text="Select Path")
+    
+    def finnishedStopping(self):
+        self.stopping=False
 
-    def stopAllAudio(self):
-        pygame.mixer.music.stop()
+    def stopAllAudio(self,event=None):
+        self.stopping=True
+        for channel in range(100):
+            if channel not in self.activeChannels:
+                pygame.mixer.Channel(channel).stop()
+        self.tk.after(200,self.finnishedStopping)
+
+    def checkAudioFinnished(self,channel,callback):
+        if not pygame.mixer.Channel(channel).get_busy():
+            self.activeChannels.append(channel)
+            callback()
+        else:
+            self.tk.after(100,lambda:self.checkAudioFinnished(channel,callback))
 
     def playAudio(self, q, callback):
+        channel=self.activeChannels.pop()
         if (p:=q.path):
-            pygame.mixer.music.stop()
-            pygame.mixer.music.load(p)
-            pygame.mixer.music.play()
+            pygame.mixer.Channel(channel).play(pygame.mixer.Sound(p))
         if (t:=q.values['time']) == 0: t+=1
-        self.tk.after(int(math.ceil(t*1000)), callback)
+        self.checkAudioFinnished(channel,callback)
+        # self.tk.after(int(math.ceil(t*1000)), callback)
 
     def play(self, q, parent):
         print("Started playing", q.values["cueName"])
@@ -395,23 +414,24 @@ class Main():
         if self.tree.item(q.iid)["tags"][-1] == 'green':
             self.tree.item(q.iid, tag=("",))
             self.resetOddEven()
-        if q.values["Autoplay"] == "Follow When Done":
-            if self.tree.get_children(q.iid):
-                self.startCue(self.tree.getInstanceFromId(self.tree.get_children(q.iid)[0]), parent=q.iid)
-            else:
-                rows = self.tree.get_children()
-                if q.iid in rows:
-                    self.startPlay()
+        if not self.stopping:
+            if q.values["Autoplay"] == "Follow When Done":
+                if self.tree.get_children(q.iid):
+                    self.startCue(self.tree.getInstanceFromId(self.tree.get_children(q.iid)[0]), parent=q.iid)
                 else:
-                    rows = self.tree.get_children(parent)
-                    if q.iid not in rows:
-                        return
-                    i = rows.index(q.iid)
-                    if i != len(rows)-1:
-                        self.startCue(
-                            self.tree.getInstanceFromId(rows[i+1]), parent)
-                    elif not self.tree.focus() in rows:
+                    rows = self.tree.get_children()
+                    if q.iid in rows:
                         self.startPlay()
+                    else:
+                        rows = self.tree.get_children(parent)
+                        if q.iid not in rows:
+                            return
+                        i = rows.index(q.iid)
+                        if i != len(rows)-1:
+                            self.startCue(
+                                self.tree.getInstanceFromId(rows[i+1]), parent)
+                        elif not self.tree.focus() in rows:
+                            self.startPlay()
 
     def startCue(self, q, parent=""):
         if q.values["prewait"] <= 0:
@@ -437,8 +457,6 @@ class Main():
     def startPlay(self):
         if self.tree.focus() == "": return
         q = self.tree.getInstanceFromId(self.tree.focus())
-        print(f"Now playing {q.values['cueName']}")
-
         self.selectNext()
         self.startCue(q)
 
@@ -516,7 +534,6 @@ class Main():
         topTools.grid_rowconfigure(0, weight=1)
         for _ in range(50): topTools.grid_columnconfigure(_, weight=1)
         toolBarIcons = [['Audio',"self.newCueFromButton"],['Fade',"lambda:print('Fade')"],*([[' ',"lambda:print('Coming soon!')"]]*20)]
-        print(toolBarIcons)
         for i,x in enumerate(toolBarIcons):
             tmpTool = tk.Button(topTools, text=x[0], bg="#4d4d4d", bd=0, fg="white",command=eval(x[1]))
             tmpTool.grid(row=0, column=int(2*i+1.5), sticky="NSEW")
@@ -656,7 +673,7 @@ class Main():
         self.tree.bind("<<TreeviewOpen>>", lambda e: self.openParent())
         self.tree.bind("<<TreeviewClose>>", lambda e: self.openParent())
         self.tree.bind("<space>", lambda e: self.startPlay())
-
+        self.tree.bind('<Escape>', self.stopAllAudio)
         self.tree.bind("<Control-R>", self.renumberCues)
 
     def renumberCues(self, e):
