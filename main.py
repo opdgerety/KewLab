@@ -1,10 +1,10 @@
 import tkinter as tk
 from tkinter import ttk, simpledialog, filedialog, font
 from PIL import ImageTk, Image
-import os
+import soundfile as sf
+import os, math, pygame
 # import librosa as pa
 # from pydub.utils import mediainfo
-import soundfile as sf
 
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
@@ -68,8 +68,7 @@ class TreeViewDragHandler():
             self.tk.after(20, lambda: self.bDownHeld(event))
 
     def pickUp(self, event):
-        if not self.bdown:
-            return
+        if not self.bdown: return
         tv = event.widget
         if tv.identify_region(event.x, event.y) != 'separator':
             self.holding = True
@@ -85,15 +84,13 @@ class TreeViewDragHandler():
                 '', tk.END, values=row["values"], iid=self.iid, tag=self.tree.item(self.iid)["tags"])
             for item in tv.get_children(tv.selection()):
                 self.isParent = True
-                self.visual_drag.insert(
-                    self.iid, tk.END, values=tv.item(item)["values"], iid=item, tag=self.tree.item(item)["tags"])
+                self.visual_drag.insert(self.iid, tk.END, values=tv.item(item)["values"], iid=item, tag=self.tree.item(item)["tags"])
             self.visual_drag.place(in_=tv, y=0, x=0, relwidth=1)
             parent = self.tree.parent(self.iid)
             self.tree.delete(tv.selection())
             if parent:
                 if self.tree.get_children(parent) == ():
-                    self.tree.getInstanceFromId(
-                        parent).setChildParent("Parent", False)
+                    self.tree.getInstanceFromId(parent).setChildParent("Parent", False)
 
     def bUp(self, event):
         self.bdown = False
@@ -204,7 +201,7 @@ class Cue():
         self.prewait = prewait
         self.isParent = isParent
         self.isChild = isChild
-        self.path = 'None'
+        self.path = None
 
     def setRow(self, row, iid) -> None:
         "Provides an instance of row"
@@ -257,6 +254,7 @@ class Cue():
 
 class Main():
     def __init__(self) -> None:
+        pygame.mixer.init()
         self.dirPath = os.path.dirname(os.path.abspath(__file__))
         self.selectedCellClass = None
         self.globFont = 'aerial'
@@ -286,6 +284,8 @@ class Main():
         ttk.Style().configure("Treeview", background="black", foreground="white", fieldbackground="black")
         self.loadScene(0)
         self.tk.mainloop()
+
+        self.tk.bind('<Escape>', self.stopAllAudio)
 
     def relativeSize(self, dir, amount=1) -> float:
         "Returns number of pixels to size something based off screen size"
@@ -351,13 +351,21 @@ class Main():
         self.prewaitInput.delete(0, "end")
         self.prewaitInput.insert(0, q.values["prewait"])
 
-    def playAudio(self, callback):
-        self.tk.after(1000, callback)
+    def stopAllAudio(self):
+        pygame.mixer.music.stop()
+
+    def playAudio(self, q, callback):
+        if (p:=q.path):
+            pygame.mixer.music.stop()
+            pygame.mixer.music.load(p)
+            pygame.mixer.music.play()
+        if (t:=q.values['time']) == 0: t+=1
+        self.tk.after(int(math.ceil(t*1000)), callback)
 
     def play(self, q, parent):
         print("Started playing", q.values["cueName"])
         self.tree.item(q.iid, tag=("green",))
-        self.playAudio(callback=lambda: self.cueEnded(q, parent))
+        self.playAudio(q,callback=lambda: self.cueEnded(q, parent))
 
     def prewait(self, q, parent):
         q.values["prewait"] -= 0.1
@@ -420,14 +428,19 @@ class Main():
     def startPlay(self):
         if self.tree.focus() == "": return
         q = self.tree.getInstanceFromId(self.tree.focus())
-        # print(f"Now playing {q.values['cueName']}")
+        print(f"Now playing {q.values['cueName']}")
+
         self.selectNext()
         self.startCue(q)
 
     def selectNext(self):
         rows = [self.tree.get_children()][0]
         try:
-            self.tree.focus(rows[min(rows.index(self.tree.focus())+1, len(rows))])
+            item=rows[min(rows.index(self.tree.focus())+1, len(rows))]
+            iOpen=self.tree.getInstanceFromId(item).open
+            self.tree.focus(item)
+            self.tree.item(item,open=(not iOpen))
+            self.openParent()
         except ValueError:
             try:
                 rows = [self.tree.get_children(self.tree.parent(self.tree.focus()))][0]
@@ -436,11 +449,20 @@ class Main():
             except IndexError: pass
         self.selectCue(None)
 
+    def newCueFromButton(self):
+        nums = []
+        for x in self.tree.get_children():
+            x = self.tree.getInstanceFromId(x)
+            nums.append(x.values['cueNumber'])
+        # print(math.ceil(max(nums)+1))
+        self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)))
+
     def createNewCue(self, cueNumber=0, name="New Cue", prewait=0.0, time=0.0, autoplay="None") -> None:
         "Creates a new cue in treeview"
         q = Cue(cueNumber=cueNumber, name=name, prewait=prewait, time=time, autoplay=autoplay, tk=self.tk)
         iid = self.addToTree(q.contense(), q.getInstance())
         q.setRow(self.tree, iid)
+        q.updateVisuals()
 
     def addToTree(self, contense, instance):
         "Adds item to tree view, returns iid"
@@ -475,7 +497,7 @@ class Main():
         topTools.grid(row=1, column=0, sticky="nesw", pady=10, columnspan=2)
         topTools.grid_rowconfigure(0, weight=1)
         for _ in range(50): topTools.grid_columnconfigure(_, weight=1)
-        toolBarIcons = [['Audio',"lambda:print('Track')"],['Fade',"lambda:print('Fade')"],*([[' ',"lambda:print('Coming soon!')"]]*20)]
+        toolBarIcons = [['Audio',"self.newCueFromButton"],['Fade',"lambda:print('Fade')"],*([[' ',"lambda:print('Coming soon!')"]]*20)]
         print(toolBarIcons)
         for i,x in enumerate(toolBarIcons):
             tmpTool = tk.Button(topTools, text=x[0], bg="#4d4d4d", bd=0, fg="white",command=eval(x[1]))
@@ -623,7 +645,8 @@ class Main():
         if not (start := simpledialog.askfloat('Cue renumber', 'Start')): return
         if not (increment := simpledialog.askfloat('Cue renumber', 'Increment')): return
         v = start
-        for x in self.tree.idToInstance.values():
+        for x in self.tree.get_children():
+            x = self.tree.getInstanceFromId(x)
             x.changeValue('cueNumber', f'{float(v):.1f}')
             v += increment
 
