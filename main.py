@@ -67,7 +67,7 @@ class TreeViewDragHandler():
         if not self.bdown:
             self.bdownCount = 0
             return
-        if self.bdownCount > 10:
+        if self.bdownCount > 20:
             self.bdownCount = 0
             self.pickUp(event)
         else:
@@ -85,19 +85,21 @@ class TreeViewDragHandler():
                 self.holding = False
                 return
             self.isParent = False
+            self.isOpen=self.tree.getInstanceFromId(self.iid[0]).open
             self.visual_drag.delete(*self.visual_drag.get_children())
             self.visual_drag.insert(
                 '', tk.END, values=row["values"], iid=self.iid, tag=self.tree.item(self.iid)["tags"])
             for item in tv.get_children(tv.selection()):
                 self.isParent = True
                 self.visual_drag.insert(self.iid, tk.END, values=tv.item(item)["values"], iid=item, tag=self.tree.item(item)["tags"])
-            self.visual_drag.place(in_=tv, y=0, x=0, relwidth=1)
+            self.visual_drag.place(in_=tv, y=self.y, x=0, relwidth=1)
             parent = self.tree.parent(self.iid)
             self.tree.delete(tv.selection())
             if parent:
                 if self.tree.get_children(parent) == ():
                     self.tree.getInstanceFromId(parent).setChildParent("Parent", False)
             self.failsafe(event)
+            self.bMotion(event,True)
 
     def bUp(self, event):
         self.bdown = False
@@ -127,7 +129,7 @@ class TreeViewDragHandler():
         #     rowNum=0
         item = self.visual_drag.item(
             self.visual_drag.get_children()[0])["values"]
-        tv.insert(parent, rowNum, values=item, iid=self.iid, tag=(self.visual_drag.item(self.visual_drag.get_children()[0])["tags"],))
+        tv.insert(parent, rowNum, values=item, iid=self.iid, tag=(self.visual_drag.item(self.visual_drag.get_children()[0])["tags"],),open=self.isOpen)
         for item in self.visual_drag.get_children(self.iid):
             tv.insert(self.iid, tk.END, values=self.visual_drag.item(item)["values"], iid=item, tag=(self.visual_drag.item(item)["tags"],))
         if self.indentation == 0 or not parent: tv.getInstanceFromId(self.iid[0]).setChildParent("Child", False)
@@ -149,9 +151,11 @@ class TreeViewDragHandler():
                     break
         self.resetOddEven()
 
-    def bMotion(self, event):
+    def bMotion(self, event, specialCase=False):
         tv = event.widget
-        if self.visual_drag.winfo_ismapped():
+        if specialCase:
+            self.visual_drag.place(x=0,y=self.y)
+        if self.visual_drag.winfo_ismapped() or specialCase:
             y = event.y
             if event.x-self.startx < 25 or self.isParent:
                 self.visual_drag.place_configure(y=y, x=0)
@@ -185,6 +189,8 @@ class TreeViewDragHandler():
                     rowNum = 0
             # print(parent,rowNum)
             tv.add(parent, rowNum, tag=("dropArea",), iid=f"dropArea", values="", instance=None)
+        else:
+            self.y = event.y
 
     def resetOddEven(self):
         odd = False
@@ -212,6 +218,7 @@ class Cue():
         self.isParent = isParent
         self.isChild = isChild
         self.path = path
+        self.isPlaying = False
 
     def setRow(self, row, iid) -> None:
         "Provides an instance of row"
@@ -326,12 +333,13 @@ class Main():
                     v = 0
                 self.selectedCellClass.changeValue("cueNumber", v)
         if valueName == "prewait":
-            if self.selectedCellClass and self.prewaitInput.get() != "":
-                try:
-                    v = float(self.prewaitInput.get())
-                except ValueError:
-                    v = 0
-                self.selectedCellClass.changeValue("prewait", v)
+            if not self.selectedCellClass.isPlaying:
+                if self.selectedCellClass and self.prewaitInput.get() != "":
+                    try:
+                        v = float(self.prewaitInput.get())
+                    except ValueError:
+                        v = 0
+                    self.selectedCellClass.changeValue("prewait", v)
 
     def openParent(self):
         q = self.tree.getInstanceFromId(self.tree.focus())
@@ -362,7 +370,7 @@ class Main():
         self.numberInput.delete(0, "end")
         self.numberInput.insert(0, q.values["cueNumber"])
         self.prewaitInput.delete(0, "end")
-        self.prewaitInput.insert(0, q.values["prewait"])
+        self.prewaitInput.insert(0, q.prewait)
         if q.path:
             self.fileInput.config(text=q.path)
         else:
@@ -382,6 +390,7 @@ class Main():
         if not pygame.mixer.Channel(channel).get_busy():
             self.activeChannels.append(channel)
             q.changeValue("time",q.duration)
+            q.isPlaying=False
             callback()
         else:
             self.tk.after(100,lambda:self.checkAudioFinished(channel,callback,q))
@@ -400,6 +409,7 @@ class Main():
     def play(self, q, parent):
         print("Started playing", q.values["cueName"])
         self.tree.item(q.iid, tag=("green",))
+        q.isPlaying=True
         self.playAudio(q,callback=lambda: self.cueEnded(q, parent))
 
     def prewait(self, q, parent):
