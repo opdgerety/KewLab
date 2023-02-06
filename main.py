@@ -203,15 +203,15 @@ class TreeViewDragHandler():
 class Cue():
     "Stores the data for a cue"
 
-    def __init__(self, cueNumber=0, name="Unnamed Cue", prewait=0.0, time=0.0, autoplay="None", open=True, isParent=False, isChild=False, tk=None) -> None:
-        self.values = {"cueNumber": cueNumber, "cueName": f"Cue test number {name}", "prewait": prewait, "time": time, "Autoplay": autoplay}
+    def __init__(self, cueNumber=0, name="Unnamed Cue", prewait=0.0, time=0.0, autoplay="None", open=True, isParent=False, isChild=False, tk=None, path=None) -> None:
+        self.values = {"cueNumber": cueNumber, "cueName": f"{name}", "prewait": prewait, "time": time, "Autoplay": autoplay}
         self.open = open
         self.tk = tk
         self.prewait = prewait
         self.duration=time
         self.isParent = isParent
         self.isChild = isChild
-        self.path = None
+        self.path = path
 
     def setRow(self, row, iid) -> None:
         "Provides an instance of row"
@@ -378,15 +378,15 @@ class Main():
                 pygame.mixer.Channel(channel).stop()
         self.tk.after(200,self.finnishedStopping)
 
-    def checkAudioFinnished(self,channel,callback,q):
+    def checkAudioFinished(self,channel,callback,q):
         if not pygame.mixer.Channel(channel).get_busy():
             self.activeChannels.append(channel)
             q.changeValue("time",q.duration)
             callback()
         else:
+            self.tk.after(100,lambda:self.checkAudioFinished(channel,callback,q))
             q.values["time"]-=0.1
             q.updateVisuals()
-            self.tk.after(100,lambda:self.checkAudioFinnished(channel,callback,q))
 
     def playAudio(self, q, callback):
         channel=self.activeChannels.pop()
@@ -394,7 +394,7 @@ class Main():
             pygame.mixer.Channel(channel).play(pygame.mixer.Sound(p))
         if (t:=q.values['time']) == 0: t+=1
         # self.checkAudioFinnished(channel,callback)
-        self.tk.after(100,lambda:self.checkAudioFinnished(channel,callback,q))
+        self.tk.after(100,lambda:self.checkAudioFinished(channel,callback,q))
         # self.tk.after(int(math.ceil(t*1000)), callback)
 
     def play(self, q, parent):
@@ -504,9 +504,9 @@ class Main():
         # print(math.ceil(max(nums)+1))
         self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)))
 
-    def createNewCue(self, cueNumber=0, name="New Cue", prewait=0.0, time=0.0, autoplay="None") -> None:
+    def createNewCue(self, cueNumber=0, name="New Cue", prewait=0.0, time=0.0, autoplay="None", path=None) -> None:
         "Creates a new cue in treeview"
-        q = Cue(cueNumber=cueNumber, name=name, prewait=prewait, time=time, autoplay=autoplay, tk=self.tk)
+        q = Cue(cueNumber=cueNumber, name=name, prewait=prewait, time=time, autoplay=autoplay, path=path, tk=self.tk)
         iid = self.addToTree(q.contense(), q.getInstance())
         q.setRow(self.tree, iid)
         q.updateVisuals()
@@ -544,7 +544,7 @@ class Main():
         topTools.grid(row=1, column=0, sticky="nesw", pady=10, columnspan=2)
         topTools.grid_rowconfigure(0, weight=1)
         for _ in range(50): topTools.grid_columnconfigure(_, weight=1)
-        toolBarIcons = [['Audio',"self.newCueFromButton"],['Fade',"lambda:print('Fade')"],*([[' ',"lambda:print('Coming soon!')"]]*20)]
+        toolBarIcons = [['Audio',"self.newCueFromButton"],['Fade',"lambda:print('Fade')"],['Add Audio from Folder','self.addCuesFromFolder'],*([[' ',"lambda:print('Coming soon!')"]]*18)]
         for i,x in enumerate(toolBarIcons):
             tmpTool = tk.Button(topTools, text=x[0], bg="#4d4d4d", bd=0, fg="white",command=eval(x[1]))
             tmpTool.grid(row=0, column=int(2*i+1.5), sticky="NSEW")
@@ -657,7 +657,7 @@ class Main():
         self.tree.heading('name', text='Name')
         self.tree.heading('prewait', text='Prewait')
         self.tree.heading('time', text='Time')
-        self.tree.heading('autoplay', text='⫯')
+        self.tree.heading('autoplay', text='▼')
         self.tree.column("#1", minwidth=20, width=20, stretch="NO") # Group
         self.tree.column("#2", minwidth=60, width=60, stretch="NO") # Number
         self.tree.column("#3", minwidth=50, width=50, stretch="YES") # Name
@@ -666,9 +666,9 @@ class Main():
         self.tree.column("#6", minwidth=30, width=30, stretch="NO") # Autoplay
         self.oddrow = False
         self.iid = 0
-        for a in range(100): self.createNewCue(cueNumber=float(a), name=f"{a}")
+        for a in range(100): self.createNewCue(cueNumber=float(a), name=f"Test cue {a}")
         self.setTreeColour()
-        self.tree.tag_configure("green", background="green", font=("Bold", 11))
+        self.tree.tag_configure("green",background="green", font=("Bold", 11))
         self.tree.tag_configure("orange", background="orange", font=("Bold", 11))
         self.tree.tag_configure("odd", background="#4d4d4d", foreground="white", font=("Bold", 11))
         self.tree.tag_configure("even", background="#3d3d3d", foreground="white", font=("Bold", 11))
@@ -686,6 +686,18 @@ class Main():
         self.tree.bind("<space>", lambda e: self.startPlay())
         self.tree.bind('<Escape>', self.stopAllAudio)
         self.tree.bind("<Control-R>", self.renumberCues)
+
+    def addCuesFromFolder(self):
+        folder_selected = filedialog.askdirectory()
+        if folder_selected:
+            files = os.listdir(folder_selected)
+            for x in files:
+                if x.split('.')[-1] in ['wav','ogg','mp3']:
+                    nums = []
+                    for i in self.tree.get_children():
+                        i = self.tree.getInstanceFromId(i)
+                        nums.append(i.values['cueNumber'])
+                    self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)),path=str(folder_selected+'/'+x),name=f"Play {str(folder_selected+'/'+x).split('/')[-1]}")
 
     def renumberCues(self, e):
         if not (start := simpledialog.askfloat('Cue renumber', 'Start')): return
