@@ -37,14 +37,15 @@ class TreeViewDragHandler():
         self.bdownCount = 0
         self.holding = False
         self.isParent = False
-        columns = ("group", 'number', 'name', 'prewait', 'time', "autoplay")
+        columns = ("group", 'number', 'name',"type", 'prewait', 'time', "autoplay")
         self.visual_drag = CustomTreeView(
             scene, columns=columns, height=1, show="")
         self.visual_drag.column("#1", minwidth=30, width=30, stretch="NO")
         self.visual_drag.column("#2", minwidth=100, width=100, stretch="NO")
         self.visual_drag.column("#4", minwidth=100, width=100, stretch="NO")
         self.visual_drag.column("#5", minwidth=100, width=100, stretch="NO")
-        self.visual_drag.column("#6", minwidth=20, width=20, stretch="NO")
+        self.visual_drag.column("#6", minwidth=100, width=100, stretch="NO")
+        self.visual_drag.column("#7", minwidth=20, width=20, stretch="NO")
         tree.bind("<Motion>", self.bMotion)
         tree.bind("<Button-1>", self.bDown)
         tree.bind("<ButtonRelease-1>", self.bUp)
@@ -209,7 +210,7 @@ class TreeViewDragHandler():
 class Cue():
     "Stores the data for a cue"
 
-    def __init__(self, cueNumber=0, name="Unnamed Cue", prewait=0.0, time=0.0, autoplay="None", open=True, isParent=False, isChild=False, tk=None, path=None) -> None:
+    def __init__(self, cueNumber=0, name="Unnamed Cue", prewait=0.0, time=0.0, autoplay="None", open=True, isParent=False, isChild=False, tk=None, path=None,effect=None) -> None:
         self.values = {"cueNumber": cueNumber, "cueName": f"{name}", "prewait": prewait, "time": time, "Autoplay": autoplay}
         self.open = open
         self.tk = tk
@@ -218,6 +219,8 @@ class Cue():
         self.isParent = isParent
         self.isChild = isChild
         self.path = path
+        self.channel = None
+        self.effect=effect
         if path:
             self.duration=sf.info(path).duration
             self.values["time"]=self.duration
@@ -255,7 +258,7 @@ class Cue():
         return f"{int(s/60):02d}:{int(s%60):02d}.{f'{(s-int(s)):.3f}'[2:]}"
 
     def contense(self):
-        return (self.openSymbol(), str(self.values["cueNumber"]), self.nameIndent(), self.sToTime(self.values["prewait"]), self.sToTime(self.values["time"]), ({"None": "", "Follow": "▼", "Follow When Done": "▽"}[self.values["Autoplay"]]))
+        return (self.openSymbol(), str(self.values["cueNumber"]), self.nameIndent(),("Audio" if not self.effect else self.effect), self.sToTime(self.values["prewait"]), self.sToTime(self.values["time"]), ({"None": "", "Follow": "▼", "Follow When Done": "▽"}[self.values["Autoplay"]]))
 
     def getInstance(self):
         return self
@@ -343,6 +346,14 @@ class Main():
                     except ValueError:
                         v = 0
                     self.selectedCellClass.changeValue("prewait", v)
+        if valueName == "duration":
+            if not self.selectedCellClass.isPlaying and self.selectedCellClass.effect:
+                if self.selectedCellClass and self.prewaitInput.get() != "":
+                    try:
+                        v = float(self.durationInput.get())
+                    except ValueError:
+                        v = 0
+                    self.selectedCellClass.changeValue("time", v)
 
     def openParent(self):
         q = self.tree.getInstanceFromId(self.tree.focus())
@@ -374,10 +385,24 @@ class Main():
         self.numberInput.insert(0, q.values["cueNumber"])
         self.prewaitInput.delete(0, "end")
         self.prewaitInput.insert(0, q.prewait)
-        if q.path:
-            self.fileInput.config(text=q.path)
+        if q.effect:
+            # self.fileInput.config(text="",state="disabled")
+            self.fileInput.grid_forget()
+            self.targetSelect.grid(row=3, column=2, sticky=("ew"), padx=10)
+            self.durationInput.config(state="normal")
+            self.durationInput.delete(0, "end")
+            self.durationInput.insert(0, str(q.duration))
         else:
-            self.fileInput.config(text="Select Path")
+            self.durationInput.config(state="readonly")
+            self.durationInput.delete(0, "end")
+            self.durationInput.insert(0, str(q.duration))
+            self.fileInput.grid(row=3, column=2, sticky=("ew"), padx=10)
+            self.targetSelect.grid_forget()
+            self.fileInput.config(text="",state="normal")
+            if q.path:
+                self.fileInput.config(text=q.path)
+            else:
+                self.fileInput.config(text="Select Path")
     
     def finnishedStopping(self):
         self.stopping=False
@@ -516,10 +541,18 @@ class Main():
             nums.append(float(x.values['cueNumber']))
         # print(math.ceil(max(nums)+1))
         self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)))
+    
+    def newFadeFromButton(self):
+        nums = [0]
+        for x in self.tree.get_children():
+            x = self.tree.getInstanceFromId(x)
+            nums.append(float(x.values['cueNumber']))
+        # print(math.ceil(max(nums)+1))
+        self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)),effect="Fade")
 
-    def createNewCue(self, cueNumber=0, name="New Cue", prewait=0.0, time=0.0, autoplay="None", path=None) -> None:
+    def createNewCue(self, cueNumber=0, name="New Cue", prewait=0.0, time=0.0, autoplay="None", path=None, effect=None) -> None:
         "Creates a new cue in treeview"
-        q = Cue(cueNumber=cueNumber, name=name, prewait=prewait, time=time, autoplay=autoplay, path=path, tk=self.tk)
+        q = Cue(cueNumber=cueNumber, name=name, prewait=prewait, time=time, autoplay=autoplay, path=path, tk=self.tk,effect=effect)
         iid = self.addToTree(q.contense(), q.getInstance())
         q.setRow(self.tree, iid)
         q.updateVisuals()
@@ -557,7 +590,7 @@ class Main():
         topTools.grid(row=1, column=0, sticky="nesw", pady=10, columnspan=2)
         topTools.grid_rowconfigure(0, weight=1)
         for _ in range(50): topTools.grid_columnconfigure(_, weight=1)
-        toolBarIcons = [['Audio',"self.newCueFromButton"],['Fade',"lambda:print('Fade')"],['Add Audio from Folder','self.addCuesFromFolder'],*([[' ',"lambda:print('Coming soon!')"]]*18)]
+        toolBarIcons = [['Audio',"self.newCueFromButton"],['Fade',"self.newFadeFromButton"],['Add Audio from Folder','self.addCuesFromFolder'],*([[' ',"lambda:print('Coming soon!')"]]*18)]
         for i,x in enumerate(toolBarIcons):
             tmpTool = tk.Button(topTools, text=x[0], bg="#4d4d4d", bd=0, fg="white",command=eval(x[1]))
             tmpTool.grid(row=0, column=int(2*i+1.5), sticky="NSEW")
@@ -620,8 +653,10 @@ class Main():
         self.numberInput = tk.Entry(self.bottomBarBasicTab, textvariable=var, bg="#313131", fg="white")
         var.trace("w", lambda name, index, mode, var=var: self.cueValueChange("number"))
         self.numberInput.grid(row=0, column=1, sticky="we")
-        durationInput = tk.Entry(self.bottomBarBasicTab, disabledbackground="#313131", fg="white", state="disabled")
-        durationInput.grid(row=1, column=1, sticky="we")
+        var = tk.StringVar()
+        self.durationInput = tk.Entry(self.bottomBarBasicTab,textvariable=var, disabledbackground="#313131",readonlybackground="#313131",background="#313131", fg="white")
+        var.trace("w", lambda name, index, mode, var=var: self.cueValueChange("duration"))
+        self.durationInput.grid(row=1, column=1, sticky="we")
         var = tk.StringVar()
         self.prewaitInput = tk.Entry(self.bottomBarBasicTab, textvariable=var, bg="#313131", fg="white")
         var.trace("w", lambda name, index, mode, var=var: self.cueValueChange("prewait"))
@@ -642,6 +677,7 @@ class Main():
         notes.grid(row=1, column=2, sticky="nesw", rowspan=2, padx=10, pady=20)
         self.fileInput = tk.Button(self.bottomBarBasicTab, font=(f'{self.globFont} 10'), bg="#313131", width=1,height=1, fg="white", text="Select Path", command=self.selectPath)
         self.fileInput.grid(row=3, column=2, sticky=("ew"), padx=10)
+        self.targetSelect = tk.Entry(self.bottomBarBasicTab, font=(40), bg="#313131", fg="White")
 
         self.bottomBarTimeTab = tk.Frame(self.bottombar, bg="#3d3d3d", highlightcolor="white")
 
@@ -664,19 +700,21 @@ class Main():
         self.scene.grid_rowconfigure(1, weight=3)
         self.scene.grid_rowconfigure(2, weight=5)
         self.scene.grid_columnconfigure(0, weight=10)
-        columns = ("group", 'number', 'name', 'prewait', 'time', "autoplay")
+        columns = ("group", 'number', 'name','type', 'prewait', 'time', "autoplay")
         self.tree = CustomTreeView(self.scene, columns=columns, show='headings', selectmode="browse")
         self.tree.heading('number', text='Number')
         self.tree.heading('name', text='Name')
+        self.tree.heading('type', text='Cue Type')
         self.tree.heading('prewait', text='Prewait')
         self.tree.heading('time', text='Time')
         self.tree.heading('autoplay', text='▼')
         self.tree.column("#1", minwidth=20, width=20, stretch="NO") # Group
         self.tree.column("#2", minwidth=60, width=60, stretch="NO") # Number
-        self.tree.column("#3", minwidth=50, width=50, stretch="YES") # Name
-        self.tree.column("#4", minwidth=90, width=90, stretch="NO") # Prewait
-        self.tree.column("#5", minwidth=90, width=90, stretch="NO") # Time
-        self.tree.column("#6", minwidth=30, width=30, stretch="NO") # Autoplay
+        self.tree.column("#3", minwidth=50, width=100, stretch="YES") # Name
+        self.tree.column("#4", minwidth=100, width=100, stretch="NO") # Type
+        self.tree.column("#5", minwidth=90, width=90, stretch="NO") # Prewait
+        self.tree.column("#6", minwidth=90, width=90, stretch="NO") # Time
+        self.tree.column("#7", minwidth=30, width=30, stretch="NO") # Autoplay
         self.oddrow = False
         self.iid = 0
         # for a in range(100): self.createNewCue(cueNumber=float(a), name=f"Test cue {a}")
