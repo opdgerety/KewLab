@@ -510,10 +510,10 @@ class Main():
                 super().delete(child)
 
     def newCueFromButton(self):
-        nums = []
+        nums = [0]
         for x in self.tree.get_children():
             x = self.tree.getInstanceFromId(x)
-            nums.append(x.values['cueNumber'])
+            nums.append(float(x.values['cueNumber']))
         # print(math.ceil(max(nums)+1))
         self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)))
 
@@ -679,7 +679,7 @@ class Main():
         self.tree.column("#6", minwidth=30, width=30, stretch="NO") # Autoplay
         self.oddrow = False
         self.iid = 0
-        for a in range(100): self.createNewCue(cueNumber=float(a), name=f"Test cue {a}")
+        # for a in range(100): self.createNewCue(cueNumber=float(a), name=f"Test cue {a}")
         self.setTreeColour()
         self.tree.tag_configure("green",background="green", font=("Bold", 11))
         self.tree.tag_configure("orange", background="orange", font=("Bold", 11))
@@ -706,7 +706,7 @@ class Main():
             files = os.listdir(folder_selected)
             for x in files:
                 if x.split('.')[-1] in ['wav','ogg','mp3']:
-                    nums = []
+                    nums = [0]
                     for i in self.tree.get_children():
                         i = self.tree.getInstanceFromId(i)
                         nums.append(i.values['cueNumber'])
@@ -718,7 +718,7 @@ class Main():
         v = start
         for x in self.tree.get_children():
             x = self.tree.getInstanceFromId(x)
-            x.changeValue('cueNumber', f'{float(v):.1f}')
+            x.changeValue('cueNumber', float(f'{float(v):.1f}'))
             v += increment
 
     def selectPath(self):
