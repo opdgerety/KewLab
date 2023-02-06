@@ -218,6 +218,9 @@ class Cue():
         self.isParent = isParent
         self.isChild = isChild
         self.path = path
+        if path:
+            self.duration=sf.info(path).duration
+            self.values["time"]=self.duration
         self.isPlaying = False
 
     def setRow(self, row, iid) -> None:
