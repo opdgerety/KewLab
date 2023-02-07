@@ -50,6 +50,11 @@ class TreeViewDragHandler():
         tree.bind("<Button-1>", self.bDown)
         tree.bind("<ButtonRelease-1>", self.bUp)
 
+    def rebind(self):
+        self.tree.bind("<Button-1>", self.bDown)
+        self.tree.bind("<ButtonRelease-1>", self.bUp)
+
+
     def failsafe(self,event):
         if self.bDown:
             self.tk.after(1000,lambda:self.failsafe(event))
@@ -210,7 +215,7 @@ class TreeViewDragHandler():
 class Cue():
     "Stores the data for a cue"
 
-    def __init__(self, cueNumber=0, name="Unnamed Cue", prewait=0.0, time=0.0, autoplay="None", open=True, isParent=False, isChild=False, tk=None, path=None,effect=None) -> None:
+    def __init__(self, cueNumber=0, name="Unnamed Cue", prewait=0.0, time=0.0, autoplay="None", open=True, isParent=False, isChild=False, tk=None, path=None,effect=None,target=None) -> None:
         self.values = {"cueNumber": cueNumber, "cueName": f"{name}", "prewait": prewait, "time": time, "Autoplay": autoplay}
         self.open = open
         self.tk = tk
@@ -221,6 +226,7 @@ class Cue():
         self.path = path
         self.channel = None
         self.effect=effect
+        self.target=target
         if path:
             self.duration=sf.info(path).duration
             self.values["time"]=self.duration
@@ -268,7 +274,7 @@ class Cue():
         if name == "prewait":
             self.prewait = newValue
         if name == "time":
-            self.duration = newValue
+            self.duration = float(newValue)
         self.updateVisuals()
 
     def updateVisuals(self):
@@ -371,6 +377,32 @@ class Main():
                 if self.tree.item(item)["tags"][0] not in ['green', 'orange', ("selected" if not resetSelected else "")]:
                     self.tree.item(item, tag=(("odd" if odd else "even"),))
 
+    def selectTargetStart(self):
+        self.tree.unbind("<Button-1>")
+        self.tk.bind("<Escape>", lambda e : self.selectTarget(e,fail=True))
+        self.tree.unbind("<<TreeviewSelect>>")
+        self.tree.unbind("<ButtonRelease-1>")
+        self.tree.bind("<Button-1>", self.selectTarget)
+        self.targetSelect.config(bg="#4a6984")
+        
+
+    def selectTarget(self,event,fail=False):
+        if fail:
+            target=None
+        else:
+            target=self.tree.identify_row(event.y)
+        self.tk.after(100,lambda:self.tree.bind("<<TreeviewSelect>>", self.selectCue))
+        self.tree.unbind("<Button-1>")
+        self.tk.after(500,lambda:self.treedrag.rebind())
+        if target!=self.selectedCellClass.iid:
+            self.selectedCellClass.target=target
+            targetName=self.tree.getInstanceFromId(target)
+            if targetName:
+                self.targetSelect.config(text=f'Target: {targetName.values["cueName"]}',state="normal",bg="#313131")
+            else:
+                self.targetSelect.config(text="Select Target",state="normal",bg="#313131")
+        else:
+            self.targetSelect.config(text="Select Target",state="normal",bg="#313131")
     def selectCue(self, event):
         self.resetOddEven(resetSelected=True)
         self.tree.item(self.tree.focus(), tag=("selected",))
@@ -389,13 +421,23 @@ class Main():
             # self.fileInput.config(text="",state="disabled")
             self.fileInput.grid_forget()
             self.targetSelect.grid(row=3, column=2, sticky=("ew"), padx=10)
+            d=f"{(q.duration):.3f}"
             self.durationInput.config(state="normal")
             self.durationInput.delete(0, "end")
-            self.durationInput.insert(0, str(q.duration))
+            self.durationInput.insert(0, d)
+            target=q.target
+            if target:
+                targetName=self.tree.getInstanceFromId(target)
+                if targetName:
+                    self.targetSelect.config(text=f'Target: {targetName.values["cueName"]}',state="normal")
+            else:
+                self.targetSelect.config(text="Select Target",state="normal") 
         else:
-            self.durationInput.config(state="readonly")
+            d=f"{(q.duration):.3f}"
+            self.durationInput.config(state="normal")
             self.durationInput.delete(0, "end")
-            self.durationInput.insert(0, str(q.duration))
+            self.durationInput.insert(0, d)
+            self.durationInput.config(state="readonly")
             self.fileInput.grid(row=3, column=2, sticky=("ew"), padx=10)
             self.targetSelect.grid_forget()
             self.fileInput.config(text="",state="normal")
@@ -415,23 +457,42 @@ class Main():
         self.tk.after(200,self.finnishedStopping)
 
     def checkAudioFinished(self,channel,callback,q):
-        if not pygame.mixer.Channel(channel).get_busy():
-            self.activeChannels.append(channel)
-            q.changeValue("time",q.duration)
-            q.isPlaying=False
-            callback()
+        if not q.effect:
+            if not pygame.mixer.Channel(channel).get_busy():
+                self.activeChannels.append(channel)
+                q.changeValue("time",q.duration)
+                q.isPlaying=False
+                q.channel=None
+                callback()
+            else:
+                self.tk.after(100,lambda:self.checkAudioFinished(channel,callback,q))
+                q.values["time"]-=0.1
+                q.updateVisuals()
         else:
-            self.tk.after(100,lambda:self.checkAudioFinished(channel,callback,q))
-            q.values["time"]-=0.1
-            q.updateVisuals()
+            if q.values["time"]<=0:
+                q.changeValue("time",q.duration)
+                q.isPlaying=False
+                q.channel=None
+                callback()
+            else:
+                self.tk.after(100,lambda:self.checkAudioFinished(channel,callback,q))
+                q.values["time"]-=0.1
+                q.updateVisuals()
 
     def playAudio(self, q, callback):
-        channel=self.activeChannels.pop()
-        if (p:=q.path):
-            pygame.mixer.Channel(channel).play(pygame.mixer.Sound(p))
-        if (t:=q.values['time']) == 0: t+=1
+        if not q.effect:
+            channel=self.activeChannels.pop()
+            q.channel=channel
+            if (p:=q.path):
+                pygame.mixer.Channel(channel).play(pygame.mixer.Sound(p))
+            if (t:=q.values['time']) == 0: t+=1
+            self.tk.after(100,lambda:self.checkAudioFinished(channel,callback,q))
+        elif q.effect=="Fade":
+            target=self.tree.getInstanceFromId(q.target)
+            if target.isPlaying and target.channel:
+                print(f"Fading channel {target.channel} over {q.duration} secconds")
+            self.tk.after(100,lambda:self.checkAudioFinished(None,callback,q))
         # self.checkAudioFinnished(channel,callback)
-        self.tk.after(100,lambda:self.checkAudioFinished(channel,callback,q))
         # self.tk.after(int(math.ceil(t*1000)), callback)
 
     def play(self, q, parent):
@@ -677,7 +738,7 @@ class Main():
         notes.grid(row=1, column=2, sticky="nesw", rowspan=2, padx=10, pady=20)
         self.fileInput = tk.Button(self.bottomBarBasicTab, font=(f'{self.globFont} 10'), bg="#313131", width=1,height=1, fg="white", text="Select Path", command=self.selectPath)
         self.fileInput.grid(row=3, column=2, sticky=("ew"), padx=10)
-        self.targetSelect = tk.Entry(self.bottomBarBasicTab, font=(40), bg="#313131", fg="White")
+        self.targetSelect = tk.Button(self.bottomBarBasicTab, font=(40), bg="#313131", fg="White",text="Select Target",command=self.selectTargetStart)
 
         self.bottomBarTimeTab = tk.Frame(self.bottombar, bg="#3d3d3d", highlightcolor="white")
 
