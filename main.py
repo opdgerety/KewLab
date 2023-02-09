@@ -17,10 +17,22 @@ class CustomTreeView(ttk.Treeview):
     def add(self, parent, index, **kw):
         id = kw["iid"]
         instance = kw.pop("instance")
+        open=True
+        if "open" in kw.keys():
+            open=kw.pop("open")
+        if instance.isParent:
+            open=False
         self.idToInstance[id] = instance
-        self.insert(parent, index, **kw, open=True)
+        self.insert(parent, index, **kw, open=open)
 
     def getInstanceFromId(self, id): return self.idToInstance[id] if id else ''
+
+    def deleteRow(self,item):
+        for child in self.get_children(item):
+            self.idToInstance.pop(child)
+            super().delete(child)
+        self.idToInstance.pop(item)
+        super().delete(item)
 
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
@@ -215,7 +227,7 @@ class TreeViewDragHandler():
 class Cue():
     "Stores the data for a cue"
 
-    def __init__(self, cueNumber=0, name="Unnamed Cue", prewait=0.0, time=0.0, autoplay="None", open=True, isParent=False, isChild=False, tk=None, path=None,effect=None,target=None) -> None:
+    def __init__(self, cueNumber=0, name="Unnamed Cue", prewait=0.0, time=0.0, autoplay="None", open=True, isParent=False, isChild=False, tk=None, path=None,effect=None,target=None,iid=None) -> None:
         self.values = {"cueNumber": cueNumber, "cueName": f"{name}", "prewait": prewait, "time": time, "Autoplay": autoplay}
         self.open = open
         self.tk = tk
@@ -227,9 +239,12 @@ class Cue():
         self.channel = None
         self.effect=effect
         self.target=target
-        if path:
+        self.iid=iid
+        if path and path[-4:]!="None":
             self.duration=sf.info(path).duration
             self.values["time"]=self.duration
+        else:
+            path=None
         self.isPlaying = False
 
     def setRow(self, row, iid) -> None:
@@ -305,6 +320,94 @@ class Main():
             return [elm for elm in style.map("Treeview", cuery_opt=option) if elm[:2] != ("!disabled", "!selected")]
         style = ttk.Style()
         style.map("Treeview", foreground=fix("foreground"), background=fix("background"))
+
+    def deleteAll(self):
+        for q in self.tree.get_children():
+            self.tree.deleteRow(q)
+        self.cleanLocalFiles()
+    
+    def delete(self):
+        self.tree.deleteRow(self.tree.focus())
+        self.cleanLocalFiles()
+
+    def selectFile(self):
+        if (path := filedialog.askopenfilename(title='Select file to open', filetypes=(('KewLab v1', '*.klab1'),))):
+            self.openFile(path)
+        else: return
+    def selectSave(self):
+        if (path := filedialog.asksaveasfilename(title='Select file to save as', filetypes=(('KewLab v1', '*.klab1'),))):
+            self.saveFile(path.replace(".klab1",""))
+        else: return
+    
+    def cleanLocalFiles(self):
+        files=[]
+        for q in self.tree.idToInstance.keys():
+            q=self.tree.getInstanceFromId(q)
+            if q and q.path:
+                files.append(q.path.replace("\\","/").split('/')[-1])
+        for fileName in os.listdir(f"{self.dirPath}\LocalFiles"):
+            if fileName not in files:
+                os.remove(f"{self.dirPath}\LocalFiles\{fileName}")
+
+    def saveFile(self,path):
+        self.cleanLocalFiles()
+        with open(f"{path}.klab1","w") as outputFile:
+            files=[]
+            for fileName in os.listdir(f"{self.dirPath}\LocalFiles"):
+                with open(f"{self.dirPath}\LocalFiles\{fileName}","rb") as f:
+                    files.append(f"{fileName}<DataSeperator>{f.read()}")
+            outputFile.write(f"{'<<FileSeperator>>'.join(files)}")
+            outputFile.write("<<<SectionSeperator>>>")
+            cues=[]
+            for cue in self.tree.get_children():
+                q=self.tree.getInstanceFromId(cue)
+                if q.path:
+                    qpath=q.path.replace('\\','/').split('/')[-1]
+                else:
+                    qpath=None
+                cues.append(f"iid::{q.iid},,,parent::,,,cueNumber::{q.values['cueNumber']},,,name::{q.values['cueName']},,,prewait::float({q.prewait}),,,time::float({q.duration}),,,autoplay::{q.values['Autoplay']},,,isParent::{q.isParent},,,isChild::{q.isChild},,,path::{qpath},,,effect::{q.effect},,,effect::{q.effect},,,target::{q.target}")
+                for child in self.tree.get_children(cue):
+                    q=self.tree.getInstanceFromId(child)
+                    if q.path:
+                        qpath=q.path.replace('\\','/').split('/')[-1]
+                    else:
+                        qpath=None
+                    cues.append(f"iid::{q.iid},,,parent::{cue},,,cueNumber::{q.values['cueNumber']},,,name::{q.values['cueName']},,,prewait::float({q.prewait}),,,time::float({q.duration}),,,autoplay::{q.values['Autoplay']},,,isParent::{q.isParent},,,isChild::{q.isChild},,,path::{qpath},,,effect::{q.effect},,,effect::{q.effect},,,target::{q.target}")
+            outputFile.write("<<CueSepperator>>".join(cues))
+    def openFile(self,path):
+        self.deleteAll()
+        self.cleanLocalFiles()
+        for fileName in os.listdir(f"{self.dirPath}\LocalFiles"):
+            os.remove(f"{self.dirPath}\LocalFiles\{fileName}")
+        with open(f"{path}","r") as inputFile:
+            data=inputFile.read()
+            f=data.split("<<<SectionSeperator>>>")
+            if len(f)<2:
+                return
+            files,cues=f
+            for row in files.split("<<FileSeperator>>"):
+                if row:
+                    fileName,fileData=row.split("<DataSeperator>")
+                    with open(f"{self.dirPath}\LocalFiles\{fileName}","wb") as f:
+                        f.write(eval(fileData))
+            for cue in cues.split("<<CueSepperator>>"):
+                if cues:
+                    cueData = {}
+                    for arg in cue.split(",,,"):
+                        n,a=arg.split("::")
+                        if "float(" in a:
+                            a=float(a.replace("float(","")[:-1])
+                        elif a == "True":
+                            a=True
+                        elif a == "False":
+                            a=False
+                        elif a=="None" and n!="autoplay":
+                            a=None
+                        cueData[n]=a
+                    p=cueData.pop("parent")
+                    if cueData:
+                        cueData["path"]=f"{self.dirPath}\LocalFiles\{cueData['path']}"
+                    self.createNewCueFromKLabFile(p,cueData)
 
     def initTk(self) -> None:
         "Prepeares the tkinter window"
@@ -442,7 +545,8 @@ class Main():
             self.targetSelect.grid_forget()
             self.fileInput.config(text="",state="normal")
             if q.path:
-                self.fileInput.config(text=q.path)
+                fileName=q.path.replace("\\","/").split('/')[-1]
+                self.fileInput.config(text=fileName)
             else:
                 self.fileInput.config(text="Select Path")
     
@@ -617,14 +721,29 @@ class Main():
         iid = self.addToTree(q.contense(), q.getInstance())
         q.setRow(self.tree, iid)
         q.updateVisuals()
+    
+    def createNewCueFromKLabFile(self, parent, kwargs) -> None:
+        "Creates a new cue in treeview"
+        open=True
+        if kwargs["isParent"]:
+            open=False
+        q = Cue(**kwargs, tk=self.tk,open=open)
+        iid = self.addToTree(q.contense(), q.getInstance(),parent=parent,open=open,iid=kwargs["iid"])
+        q.setRow(self.tree, iid)
+        q.updateVisuals()
 
-    def addToTree(self, contense, instance):
+    def addToTree(self, contense, instance,parent="",open=True,iid=None):
         "Adds item to tree view, returns iid"
         self.oddrow = not self.oddrow
         # self.tree.insert('', tk.END, values=contense,tag=(("odd" if self.oddrow else "even"),),iid=f'line{self.iid}')
-        self.iid += 1
-        self.tree.add('', tk.END, values=contense, tag=(("odd" if self.oddrow else "even"),), iid=f'line{self.iid}', instance=instance)
-        return f'line{self.iid}'
+        if not iid:
+            self.iid += 1
+            iid=f'line{self.iid}'
+        else:
+            int(iid.replace("line",""))>=self.iid
+            self.iid=int(iid.replace("line",""))+1
+        self.tree.add(parent, tk.END, values=contense, tag=(("odd" if self.oddrow else "even"),), iid=iid, instance=instance)
+        return iid
 
     def drawTopbar(self):
         self.topbar = tk.Frame(self.scene, bg="#3d3d3d",highlightcolor="white")
@@ -651,9 +770,9 @@ class Main():
         topTools.grid(row=1, column=0, sticky="nesw", pady=10, columnspan=2)
         topTools.grid_rowconfigure(0, weight=1)
         for _ in range(50): topTools.grid_columnconfigure(_, weight=1)
-        toolBarIcons = [['Audio',"self.newCueFromButton"],['Fade',"self.newFadeFromButton"],['Add Audio from Folder','self.addCuesFromFolder'],*([[' ',"lambda:print('Coming soon!')"]]*18)]
+        toolBarIcons = [['Open',self.selectFile],['Save',self.selectSave],['Audio',self.newCueFromButton],['Fade',self.newFadeFromButton],['Add Audio from Folder',self.addCuesFromFolder],["Delete",self.delete],["Delete All",self.deleteAll],*([[' ',lambda:print('Coming soon!')]]*18)]
         for i,x in enumerate(toolBarIcons):
-            tmpTool = tk.Button(topTools, text=x[0], bg="#4d4d4d", bd=0, fg="white",command=eval(x[1]))
+            tmpTool = tk.Button(topTools, text=x[0], bg="#4d4d4d", bd=0, fg="white",command=x[1])
             tmpTool.grid(row=0, column=int(2*i+1.5), sticky="NSEW")
 
     def updateBottomTabs(self, tabName):
@@ -798,6 +917,7 @@ class Main():
         self.tree.bind("<space>", lambda e: self.startPlay())
         self.tree.bind('<Escape>', self.stopAllAudio)
         self.tree.bind("<Control-R>", self.renumberCues)
+        self.cleanLocalFiles()
 
     def addCuesFromFolder(self):
         folder_selected = filedialog.askdirectory()
@@ -809,7 +929,11 @@ class Main():
                     for i in self.tree.get_children():
                         i = self.tree.getInstanceFromId(i)
                         nums.append(i.values['cueNumber'])
-                    self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)),path=str(folder_selected+'/'+x),name=f"Play {str(folder_selected+'/'+x).split('/')[-1]}")
+                    fileName=x.replace("\\","/").split('/')[-1]
+                    with open(str(folder_selected+'/'+x),"rb") as inputFile:
+                        with open(f"{self.dirPath}\LocalFiles\{fileName}","wb") as outputFile:
+                            outputFile.write(inputFile.read())
+                    self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)),path=f"{self.dirPath}\LocalFiles\{fileName}",name=f"Play {str(folder_selected+'/'+x).split('/')[-1]}")
 
     def renumberCues(self, e):
         if not (start := simpledialog.askfloat('Cue renumber', 'Start')): return
@@ -823,14 +947,18 @@ class Main():
     def selectPath(self):
         q = self.tree.getInstanceFromId(self.tree.focus())
         if (path := filedialog.askopenfilename(title='Select file to add', filetypes=(('Sound', '*.ogg *.wav *.mp3'), ('All files', '*.*')))):
-            q.path = path
+            fileName=path.replace("\\","/").split('/')[-1]
+            with open(path,"rb") as inputFile:
+                with open(f"{self.dirPath}\LocalFiles\{fileName}","wb") as outputFile:
+                    outputFile.write(inputFile.read())
+            q.path = f"{self.dirPath}\LocalFiles\{fileName}"
             if q.values['cueName'].split(' ')[1] == 'test' or q.values['cueName'] == '':
                 q.values['cueName'] = f"Play {path.split('/')[-1]}"
             # x = pa.get_duration(*pa.load(path))
             # print(x)
             # print(mediainfo(path)['duration'])
             q.changeValue('time',sf.info(path).duration)
-            self.fileInput.config(text=path)
+            self.fileInput.config(text=fileName)
             q.updateVisuals() #ABC
         else: return
 
