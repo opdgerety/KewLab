@@ -20,7 +20,7 @@ class CustomTreeView(ttk.Treeview):
         open=True
         if "open" in kw.keys():
             open=kw.pop("open")
-        if instance.isParent:
+        if instance and instance.isParent:
             open=False
         self.idToInstance[id] = instance
         self.insert(parent, index, **kw, open=open)
