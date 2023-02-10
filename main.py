@@ -34,6 +34,93 @@ class CustomTreeView(ttk.Treeview):
         self.idToInstance.pop(item)
         super().delete(item)
 
+class ImageButton(tk.Button):
+    def __init__(self, master,file="",**kwargs) -> None:
+        if file:
+            self.image=Image.open(file)
+        self.master=master
+        super().__init__(master,**kwargs)
+        self.bind("<Configure>",lambda e:self.updateImage())
+        # self.updateImage()
+    def updateImage(self):
+        width,height=self.winfo_width(),self.winfo_height()
+        if width<=0 or height<=0:
+            return
+        self.newImage=self.image.resize((width,height))
+        self.newImage=ImageTk.PhotoImage(self.newImage)
+        self.config(image=self.newImage)
+        
+class ImageEntry(tk.Entry):
+    def __init__(self, master,file="",parentBackground="black",percentOfset=0.98,text="",**kwargs) -> None:
+        if file:
+            self.image=Image.open(file)
+        self.percentOfset=percentOfset
+        self.frame=tk.Frame(master, bd=0, bg=parentBackground,relief="sunken")
+        self.master=master
+        self.parentBackground=parentBackground
+        self.imageLabel = tk.Label(self.frame)
+        self.imageLabel.grid()
+        self.textvar=tk.StringVar()
+        super().__init__(self.frame,**kwargs,textvariable=self.textvar)
+        self.bind("<Configure>",lambda e:self.updateImage())
+    def grid(self,**kwargs):
+        self.frame.grid(**kwargs)
+        self.frame.columnconfigure(0,weight=1)
+        self.frame.rowconfigure(0,weight=1)
+        super().grid(row=0,column=0,sticky="nesw")
+    def updateImage(self):
+        self.grid_configure(padx=self.frame.winfo_width()-self.frame.winfo_width()*self.percentOfset)
+        width,height=self.frame.winfo_width(),self.frame.winfo_height()
+        if width<=0 or height<=0:
+            return
+        self.newImage=self.image.resize((width,height))
+        self.newImage=ImageTk.PhotoImage(self.newImage)
+        self.imageLabel.config(image=self.newImage,background=self.parentBackground)
+
+class OptionsDropdown(tk.Frame):
+    def __init__(self, master,openButton,parentBackground="black",buttons=[],**kwargs) -> None:
+        self.master=master
+        self.openButton=openButton
+        self.parentBackground=parentBackground
+        self.buttons=buttons
+        self.imageLabel=False
+        self.hidden=True
+        super().__init__(master,**kwargs)
+        self.openButton.bind("<Enter>",self.enterButton)
+        self.openButton.bind("<Leave>",self.exitButton)
+        self.bind("<Enter>",self.enterSelf)
+        self.bind("<Leave>",self.exitSelf)
+    def show(self):
+        self.columnconfigure(0,weight=1)
+        self.rowconfigure(0,weight=1,uniform=True)
+        self.rowconfigure(1,weight=1,uniform=True)
+        self.rowconfigure(2,weight=1,uniform=True)
+        self.rowconfigure(3,weight=1,uniform=True)
+        self.rowconfigure(4,weight=1,uniform=True)
+        self.rowconfigure(5,weight=1,uniform=True)
+        p=0
+        width,height=self.openButton.winfo_width(),self.openButton.winfo_height()*len(self.buttons)
+        for button in self.buttons:
+            b=ImageButton(self,file=button[0],bd=0,bg="#474646",activebackground="#474646",width=width,height=height,command=button[1])
+            b.grid(row=p,column=0)
+            p+=1
+        self.place(x=self.openButton.winfo_x(),y=self.openButton.winfo_y()+self.openButton.winfo_height(),width=width,height=height)
+    def hide(self):
+        if self.hidden:
+            self.place_forget()
+    def enterButton(self,event):
+        self.show()
+        self.hidden=False
+    def exitButton(self,event):
+        self.hidden=True
+        self.after(100,self.hide)
+    def enterSelf(self,event):
+        self.hidden=False
+    def exitSelf(self,event):
+        self.hidden=True
+        self.hide()
+
+
 #--------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------
 
@@ -746,34 +833,89 @@ class Main():
         return iid
 
     def drawTopbar(self):
-        self.topbar = tk.Frame(self.scene, bg="#3d3d3d",highlightcolor="white")
+        self.topbar = tk.Frame(self.scene, bg="#2D2C2C",bd=0)
         self.topbar.grid(row=0, column=0, columnspan=2, sticky="nesw")
-        self.topbar.grid_rowconfigure(0, weight=10)
-        self.topbar.grid_rowconfigure(1, weight=1)
+        self.topbar.grid_rowconfigure(0, weight=2,uniform=True)
+        self.topbar.grid_rowconfigure(1, weight=7,uniform=True)
+        self.topbar.grid_rowconfigure(2, weight=2,uniform=True)
         self.topbar.grid_columnconfigure(0, weight=1)
-        self.topbar.grid_columnconfigure(1, weight=8)
-        button_border = tk.Frame(self.topbar, highlightbackground="lime", highlightthickness=4)
-        button_border.grid(row=0, column=0, sticky="nesw", pady=10)
-        goButton = tk.Button(button_border, text="GO", background="#4d4d4d",bd=0, foreground='white', font=("Bold", 50), command=self.startPlay)
-        button_border.grid_rowconfigure(0, weight=1)
-        button_border.grid_columnconfigure(0, weight=1)
-        goButton.grid(row=0, column=0, sticky="nesw")
-        topInfoFrame = tk.Frame(self.topbar, bg="#3d3d3d", highlightcolor="green")
-        topInfoFrame.grid(row=0, column=1, sticky="nesw")
-        topInfoFrame.grid_rowconfigure(0, weight=1)
-        topInfoFrame.grid_columnconfigure(0, weight=1)
-        var = tk.StringVar()
-        var.trace("w", lambda name, index, mode,var=var: self.cueValueChange("title"))
-        self.qtitle = tk.Entry(topInfoFrame, textvariable=var, font=(30), bg="#3d3d3d", fg="white")
-        self.qtitle.grid(row=0, column=0, sticky="new", padx=10, pady=40)
-        topTools = tk.Frame(self.topbar, bg="#3d3d3d", highlightcolor="white")
-        topTools.grid(row=1, column=0, sticky="nesw", pady=10, columnspan=2)
-        topTools.grid_rowconfigure(0, weight=1)
-        for _ in range(50): topTools.grid_columnconfigure(_, weight=1)
-        toolBarIcons = [['Open',self.selectFile],['Save',self.selectSave],['Audio',self.newCueFromButton],['Fade',self.newFadeFromButton],['Add Audio from Folder',self.addCuesFromFolder],["Delete",self.delete],["Delete All",self.deleteAll],*([[' ',lambda:print('Coming soon!')]]*18)]
-        for i,x in enumerate(toolBarIcons):
-            tmpTool = tk.Button(topTools, text=x[0], bg="#4d4d4d", bd=0, fg="white",command=x[1])
-            tmpTool.grid(row=0, column=int(2*i+1.5), sticky="NSEW")
+        toolbar = tk.Frame(self.topbar, bd=0, bg="#474646")
+        toolbar.grid_rowconfigure(0, weight=1)
+        toolbar.grid_columnconfigure(0, weight=1,uniform=True)
+        toolbar.grid_columnconfigure(1, weight=3,uniform=True)
+        toolbar.grid_columnconfigure(2, weight=3,uniform=True)
+        toolbar.grid_columnconfigure(3, weight=3,uniform=True)
+        toolbar.grid_columnconfigure(4, weight=1,uniform=True)
+        toolbar.grid_columnconfigure(5, weight=2,uniform=True)
+        toolbar.grid_columnconfigure(6, weight=1,uniform=True)
+        toolbar.grid_columnconfigure(7, weight=21,uniform=True)
+        toolbar.grid_columnconfigure(8, weight=1,uniform=True)
+        toolbar.grid_columnconfigure(9, weight=2,uniform=True)
+        toolbar.grid_columnconfigure(10, weight=1,uniform=True)
+        toolbar.grid_columnconfigure(11, weight=3,uniform=True)
+        toolbar.grid_columnconfigure(12, weight=6,uniform=True)
+        toolbar.grid_columnconfigure(13, weight=1,uniform=True)
+        toolbar.grid(row=0, column=0, sticky="nsew")
+        fileButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonfile.png",bd=0)
+        fileButton.grid(row=0,column=1,sticky="news",pady=5,padx=1)
+        filedropdown=OptionsDropdown(self.scene,fileButton,buttons=[(f"{self.dirPath}\Assets\Buttons\Buttonopen.png",self.selectFile),(f"{self.dirPath}\Assets\Buttons\Buttonsave.png",self.selectSave),(f"{self.dirPath}\Assets\Buttons\Buttonimportcues.png",self.addCuesFromFolder),(f"{self.dirPath}\Assets\Buttons\Buttonimportcue.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonimport.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonexport.png",None)],parentBackground="#474646",bg="#5B5B5B")
+        editButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonedit.png",bd=0)
+        editButton.grid(row=0,column=2,sticky="news",pady=5,padx=1)
+        filedropdown=OptionsDropdown(self.scene,editButton,buttons=[(f"{self.dirPath}\Assets\Buttons\Buttondelete.png",self.delete),(f"{self.dirPath}\Assets\Buttons\Buttondeleteall.png",self.deleteAll),(f"{self.dirPath}\Assets\Buttons\Buttonnewaudio.png",self.newCueFromButton),(f"{self.dirPath}\Assets\Buttons\Buttonnewfade.png",self.newFadeFromButton),(f"{self.dirPath}\Assets\Buttons\Buttonnewpan.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonreorder.png",self.renumberCues)],parentBackground="#474646",bg="#5B5B5B")
+        viewButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonview.png",bd=0)
+        viewButton.grid(row=0,column=3,sticky="news",pady=5,padx=1)
+        sep=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\horizontalSeperator.png",bd=0)
+        sep.grid(row=0,column=5,sticky="news",pady=10,padx=1)
+        self.projectTitle=ImageEntry(toolbar,bg="#5B5B5B",file=f"{self.dirPath}\Assets\Buttons\ProjectTitle.png",bd=0,parentBackground="#474646",text="File Title",font=("public sans",))
+        self.projectTitle.grid(row=0,column=7,sticky="news",pady=5,padx=1)
+        self.projectTitle.insert(0,"Project Title")
+        sep=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\horizontalSeperator.png",bd=0)
+        sep.grid(row=0,column=9,sticky="news",pady=10,padx=1)
+        helpButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonhelp.png",bd=0)
+        helpButton.grid(row=0,column=11,sticky="news",pady=5,padx=1)
+        libraryButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonlibrary.png",bd=0)
+        libraryButton.grid(row=0,column=12,sticky="news",pady=5,padx=1)
+        topbarMiddle = tk.Frame(self.topbar, bd=0, bg="#2D2C2C")
+        topbarMiddle.grid_rowconfigure(0,weight=1)
+        topbarMiddle.grid_columnconfigure(0, weight=1,uniform=True)
+        topbarMiddle.grid_columnconfigure(1, weight=9,uniform=True)
+        topbarMiddle.grid_columnconfigure(2, weight=1,uniform=True)
+        topbarMiddle.grid_columnconfigure(3, weight=1,uniform=True)
+        topbarMiddle.grid_columnconfigure(4, weight=1,uniform=True)
+        topbarMiddle.grid_columnconfigure(5, weight=23,uniform=True)
+        topbarMiddle.grid_columnconfigure(6, weight=1,uniform=True)
+        topbarMiddle.grid_columnconfigure(7, weight=1,uniform=True)
+        topbarMiddle.grid_columnconfigure(8, weight=1,uniform=True)
+        topbarMiddle.grid_columnconfigure(9, weight=9,uniform=True)
+        topbarMiddle.grid_columnconfigure(10, weight=1,uniform=True)
+        topbarMiddle.grid(row=1, column=0, sticky="nsew")
+        goButton=ImageButton(topbarMiddle,bg="#2D2C2C",activebackground="#2D2C2C",file=f"{self.dirPath}\Assets\Buttons\ButtonGo.png",bd=0,command=self.startPlay)
+        goButton.grid(row=0,column=1,sticky="news",pady=5,padx=1)
+        sep=ImageButton(topbarMiddle,bg="#2D2C2C",activebackground="#2D2C2C",file=f"{self.dirPath}\Assets\Buttons\\verticalSeperator.png",bd=0)
+        sep.grid(row=0,column=3,sticky="news",pady=5,padx=10)
+        sep=ImageButton(topbarMiddle,bg="#2D2C2C",activebackground="#2D2C2C",file=f"{self.dirPath}\Assets\Buttons\\verticalSeperator.png",bd=0)
+        sep.grid(row=0,column=7,sticky="news",pady=5,padx=10)
+        noButton=ImageButton(topbarMiddle,bg="#2D2C2C",activebackground="#2D2C2C",file=f"{self.dirPath}\Assets\Buttons\ButtonNo.png",bd=0,command=self.stopAllAudio)
+        noButton.grid(row=0,column=9,sticky="news",pady=5,padx=1)
+        topbarCenter = tk.Frame(topbarMiddle, bd=0, bg="#2D2C2C")
+        topbarCenter.grid_rowconfigure(0,weight=1,uniform=True)
+        topbarCenter.grid_rowconfigure(1,weight=4,uniform=True)
+        topbarCenter.grid_rowconfigure(2,weight=1,uniform=True)
+        topbarCenter.grid_rowconfigure(3,weight=4,uniform=True)
+        topbarCenter.grid_rowconfigure(4,weight=1,uniform=True)
+        topbarCenter.grid_columnconfigure(0, weight=1)
+        topbarCenter.grid(row=0, column=5, sticky="nsew")
+        self.qtitle=ImageEntry(topbarCenter,bg="#474646",file=f"{self.dirPath}\Assets\Buttons\CueTitle.png",bd=0,parentBackground="#2D2C2C",text="File Title",font=("public sans",),percentOfset=0.98)
+        self.qtitle.grid(row=1,column=0,sticky="news",pady=5,padx=1)
+        self.qtitle.insert(0,"Cue Title")
+        self.qtitle.textvar.trace("w", lambda name, index, mode,var=self.qtitle.textvar: self.cueValueChange("title"))
+        notes=ImageEntry(topbarCenter,bg="#474646",file=f"{self.dirPath}\Assets\Buttons\\NoteTitle.png",bd=0,parentBackground="#2D2C2C",text="File Title",font=("public sans",),percentOfset=0.98)
+        notes.grid(row=3,column=0,sticky="news",pady=5,padx=1)
+        notes.insert(0,"Notes Tmp")
+        toolTray = tk.Frame(self.topbar, bd=0, bg="#474646")
+        toolTray.grid(row=2, column=0, sticky="nsew")
+        toolTray.grid_columnconfigure(0,weight=1,uniform=True)
+        toolTray.grid_rowconfigure(0, weight=1)
 
     def updateBottomTabs(self, tabName):
         self.bottomBarBasicTab.grid_forget()
@@ -876,9 +1018,9 @@ class Main():
     def mainScene(self) -> None:
         "Loads the main scene"
         self.drawTopbar()
-        self.scene.grid_rowconfigure(0, weight=1)
-        self.scene.grid_rowconfigure(1, weight=3)
-        self.scene.grid_rowconfigure(2, weight=5)
+        self.scene.grid_rowconfigure(0, weight=2,uniform=True)
+        self.scene.grid_rowconfigure(1, weight=4 ,uniform=True)
+        self.scene.grid_rowconfigure(2, weight=3,uniform=True)
         self.scene.grid_columnconfigure(0, weight=10)
         columns = ("group", 'number', 'name','type', 'prewait', 'time', "autoplay")
         self.tree = CustomTreeView(self.scene, columns=columns, show='headings', selectmode="browse")
@@ -935,7 +1077,7 @@ class Main():
                             outputFile.write(inputFile.read())
                     self.createNewCue(cueNumber=float(math.ceil(max(nums)+1)),path=f"{self.dirPath}\LocalFiles\{fileName}",name=f"Play {str(folder_selected+'/'+x).split('/')[-1]}")
 
-    def renumberCues(self, e):
+    def renumberCues(self, e=None):
         if not (start := simpledialog.askfloat('Cue renumber', 'Start')): return
         if not (increment := simpledialog.askfloat('Cue renumber', 'Increment')): return
         v = start
