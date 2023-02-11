@@ -35,10 +35,11 @@ class CustomTreeView(ttk.Treeview):
         super().delete(item)
 
 class ImageButton(tk.Button):
-    def __init__(self, master,file="",**kwargs) -> None:
+    def __init__(self, master,file="",widthRatio=False,**kwargs) -> None:
         if file:
             self.image=Image.open(file)
         self.master=master
+        self.widthRatio=widthRatio
         super().__init__(master,**kwargs)
         self.bind("<Configure>",lambda e:self.updateImage())
         # self.updateImage()
@@ -46,6 +47,8 @@ class ImageButton(tk.Button):
         width,height=self.winfo_width(),self.winfo_height()
         if width<=0 or height<=0:
             return
+        if self.widthRatio:
+            height=int((width/self.image.width)*self.image.height)
         self.newImage=self.image.resize((width,height))
         self.newImage=ImageTk.PhotoImage(self.newImage)
         self.config(image=self.newImage)
@@ -102,7 +105,7 @@ class OptionsDropdown(tk.Frame):
         width,height=self.openButton.winfo_width(),self.openButton.winfo_height()*len(self.buttons)
         for button in self.buttons:
             b=ImageButton(self,file=button[0],bd=0,bg="#474646",activebackground="#474646",width=width,height=height,command=button[1])
-            b.grid(row=p,column=0)
+            b.grid(row=p,column=0,pady=1)
             p+=1
         self.place(x=self.openButton.winfo_x(),y=self.openButton.winfo_y()+self.openButton.winfo_height(),width=width,height=height)
     def hide(self):
@@ -858,18 +861,18 @@ class Main():
         toolbar.grid(row=0, column=0, sticky="nsew")
         fileButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonfile.png",bd=0)
         fileButton.grid(row=0,column=1,sticky="news",pady=5,padx=1)
-        filedropdown=OptionsDropdown(self.scene,fileButton,buttons=[(f"{self.dirPath}\Assets\Buttons\Buttonopen.png",self.selectFile),(f"{self.dirPath}\Assets\Buttons\Buttonsave.png",self.selectSave),(f"{self.dirPath}\Assets\Buttons\Buttonimportcues.png",self.addCuesFromFolder),(f"{self.dirPath}\Assets\Buttons\Buttonimportcue.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonimport.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonexport.png",None)],parentBackground="#474646",bg="#5B5B5B")
+        filedropdown=OptionsDropdown(self.scene,fileButton,buttons=[(f"{self.dirPath}\Assets\Buttons\Buttonopen.png",self.selectFile),(f"{self.dirPath}\Assets\Buttons\Buttonsave.png",self.selectSave),(f"{self.dirPath}\Assets\Buttons\Buttonimportcues.png",self.addCuesFromFolder),(f"{self.dirPath}\Assets\Buttons\Buttonimportcue.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonimport.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonexport.png",None)],parentBackground="#474646",bg="#474646")
         editButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonedit.png",bd=0)
         editButton.grid(row=0,column=2,sticky="news",pady=5,padx=1)
-        filedropdown=OptionsDropdown(self.scene,editButton,buttons=[(f"{self.dirPath}\Assets\Buttons\Buttondelete.png",self.delete),(f"{self.dirPath}\Assets\Buttons\Buttondeleteall.png",self.deleteAll),(f"{self.dirPath}\Assets\Buttons\Buttonnewaudio.png",self.newCueFromButton),(f"{self.dirPath}\Assets\Buttons\Buttonnewfade.png",self.newFadeFromButton),(f"{self.dirPath}\Assets\Buttons\Buttonnewpan.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonreorder.png",self.renumberCues)],parentBackground="#474646",bg="#5B5B5B")
+        filedropdown=OptionsDropdown(self.scene,editButton,buttons=[(f"{self.dirPath}\Assets\Buttons\Buttondelete.png",self.delete),(f"{self.dirPath}\Assets\Buttons\Buttondeleteall.png",self.deleteAll),(f"{self.dirPath}\Assets\Buttons\Buttonnewaudio.png",self.newCueFromButton),(f"{self.dirPath}\Assets\Buttons\Buttonnewfade.png",self.newFadeFromButton),(f"{self.dirPath}\Assets\Buttons\Buttonnewpan.png",None),(f"{self.dirPath}\Assets\Buttons\Buttonreorder.png",self.renumberCues)],parentBackground="#474646",bg="#474646")
         viewButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonview.png",bd=0)
         viewButton.grid(row=0,column=3,sticky="news",pady=5,padx=1)
-        sep=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\horizontalSeperator.png",bd=0)
+        sep=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\horizontalSeperator.png",bd=0,widthRatio=True)
         sep.grid(row=0,column=5,sticky="news",pady=10,padx=1)
         self.projectTitle=ImageEntry(toolbar,bg="#5B5B5B",file=f"{self.dirPath}\Assets\Buttons\ProjectTitle.png",bd=0,parentBackground="#474646",text="File Title",font=("public sans",))
         self.projectTitle.grid(row=0,column=7,sticky="news",pady=5,padx=1)
         self.projectTitle.insert(0,"Project Title")
-        sep=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\horizontalSeperator.png",bd=0)
+        sep=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\horizontalSeperator.png",bd=0,widthRatio=True)
         sep.grid(row=0,column=9,sticky="news",pady=10,padx=1)
         helpButton=ImageButton(toolbar,bg="#474646",activebackground="#474646",file=f"{self.dirPath}\Assets\Buttons\Buttonhelp.png",bd=0)
         helpButton.grid(row=0,column=11,sticky="news",pady=5,padx=1)
