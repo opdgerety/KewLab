@@ -2,7 +2,11 @@ import tkinter as tk
 from tkinter import ttk, simpledialog, filedialog, font
 from PIL import ImageTk, Image
 import soundfile as sf
-import os, math, pygame
+import os, math, pygame, io, librosa, threading, matplotlib
+# from matplotlib.backend_bases import _get_renderer as DoneErrorFunc
+# DoneError=DoneErrorFunc.Done
+import librosa.display
+import matplotlib.pyplot as plt
 # import librosa as pa
 # from pydub.utils import mediainfo
 
@@ -415,10 +419,17 @@ class Main():
         pygame.mixer.init()
         self.dirPath = os.path.dirname(os.path.abspath(__file__))
         self.selectedCellClass = None
+        self.isDrawringWaveform=False
+        self.waveformpath=""
         self.globFont = 'aerial'
         pygame.mixer.set_num_channels(100)
         self.activeChannels=list(range(100))
         self.stopping=False
+
+    def onCloseWindow(self):
+        for fileName in os.listdir(f"{self.dirPath}\LocalFiles"):
+            os.remove(f"{self.dirPath}\LocalFiles\{fileName}")
+        self.tk.destroy()
 
     def setTreeColour(self) -> None:
         "Sets treeview colour"
@@ -427,7 +438,11 @@ class Main():
         style.configure("Treeview.Heading", background="#4d4d4d", foreground="white", fieldbackground="black")
         style.configure("Treeview", background="#4d4d4d", foreground="white", fieldbackground="#3d3d3d")
         style.configure("Vertical.TScrollbar", troughcolor="#4d4d4d", bordercolor="white", arrowcolor="#4d4d4d")
-
+        style.layout('Horizontal.trimslider',[('Horizontal.Scale.trough',
+               {'sticky': 'nswe',
+                'children': [('custom.Horizontal.Scale.slider',
+                              {'side': 'left', 'sticky': 'nesw'})]})])
+        style.configure('Horizontal.trimslider', background="#3d3d3d",showvalue=0,fg="black",troughcolor="#3d3d3d",bd=0,highlightcolor="black")
         def fix(option):
             return [elm for elm in style.map("Treeview", cuery_opt=option) if elm[:2] != ("!disabled", "!selected")]
         style = ttk.Style()
@@ -533,6 +548,7 @@ class Main():
         self.tk.iconbitmap(f'{self.dirPath}/Assets/icon.ico')
         ttk.Style().configure("Treeview", background="black", foreground="white", fieldbackground="black")
         self.loadScene(0)
+        self.tk.protocol("WM_DELETE_WINDOW", self.onCloseWindow)
         self.tk.mainloop()
 
     def relativeSize(self, dir, amount=1) -> float:
@@ -621,7 +637,8 @@ class Main():
             self.targetSelect.config(text="Select Target",state="normal",bg="#313131")
     def selectCue(self, event):
         self.resetOddEven(resetSelected=True)
-        self.tree.item(self.tree.focus(), tag=("selected",))
+        if self.tree.item(self.tree.focus())["tags"][0]!="orange" and self.tree.item(self.tree.focus())["tags"][0]!="green":
+            self.tree.item(self.tree.focus(), tag=("selected",))
         q = self.tree.getInstanceFromId(self.tree.focus())
         self.selectedCellClass = q
         self.qtitle.delete(0, "end")
@@ -642,6 +659,10 @@ class Main():
             self.durationInput.delete(0, "end")
             self.durationInput.insert(0, d)
             target=q.target
+            img=Image.open(f"{self.dirPath}\Assets\Buttons\\blankWaveform.png")
+            save={0:img}
+            self.waveform.image=img
+            self.waveform.updateImage()
             if target:
                 targetName=self.tree.getInstanceFromId(target)
                 if targetName:
@@ -654,12 +675,18 @@ class Main():
             self.durationInput.delete(0, "end")
             self.durationInput.insert(0, d)
             self.durationInput.config(state="readonly")
-            self.fileInput.grid(row=3, column=2, sticky=("ew"), padx=10)
+            self.fileInput.grid(row=4, column=3, sticky=("ew"), padx=10)
             self.targetSelect.grid_forget()
             self.fileInput.config(text="",state="normal")
+            img=Image.open(f"{self.dirPath}\Assets\Buttons\\blankWaveform.png")
+            save={0:img}
+            self.waveform.image=img
+            self.waveform.updateImage()
             if q.path:
                 fileName=q.path.replace("\\","/").split('/')[-1]
                 self.fileInput.config(text=fileName)
+                self.waveformpath=q.path
+                self.updateWaveform(q.path)
             else:
                 self.fileInput.config(text="Select Path")
     
@@ -721,6 +748,13 @@ class Main():
     def prewait(self, q, parent):
         q.values["prewait"] -= 0.1
         q.updateVisuals()
+        if self.stopping:
+            if self.tree.item(q.iid)["tags"][-1] == 'orange':
+                self.tree.item(q.iid, tag=("",))
+                self.resetOddEven()
+            q.values["prewait"] = q.prewait
+            q.updateVisuals()
+            return
         if q.values["prewait"] <= 0:
             if self.tree.item(q.iid)["tags"][-1] == 'orange':
                 self.tree.item(q.iid, tag=("",))
@@ -942,6 +976,42 @@ class Main():
         toolTray.grid(row=2, column=0, sticky="nsew")
         toolTray.grid_columnconfigure(0,weight=1,uniform=True)
         toolTray.grid_rowconfigure(0, weight=1)
+    
+    def updateWaveformCallback(self,event=None):
+        self.waveform.updateImage()
+        self.tk.unbind("<<WaveformDone>>")
+
+    def updateWaveform(self,path):
+        self.waveform.updateImage()
+        t=threading.Thread(target=lambda:self.updateWaveformthreaded(path))
+        self.tk.bind("<<WaveformDone>>",self.updateWaveformCallback)
+        t.start()
+
+    def updateWaveformthreaded(self,path):
+        if self.isDrawringWaveform:
+            if path == self.waveformpath:
+                self.tk.after(1000,lambda:self.updateWaveform(self.waveformpath))
+            return
+        self.isDrawringWaveform=True
+        plt.close()
+        matplotlib.use('agg')
+        plt.rcParams["figure.figsize"] = [7.50, 3.50]
+        plt.rcParams["figure.autolayout"] = True
+        plt.figure(facecolor='#2a2a2a')
+        y, sr = librosa.load(path)
+        ax = plt.subplot()
+        librosa.display.waveshow(y, sr=sr, ax=ax,color="blue")
+        plt.axis('off')
+        dur=sf.info(path).duration
+        plt.xlim(0, dur)
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png',bbox_inches='tight', pad_inches=0)
+        plt.close()
+        img=Image.open(buf)
+        save={0:img}
+        self.waveform.image=img
+        self.isDrawringWaveform=False
+        self.tk.event_generate("<<WaveformDone>>")
 
     def updateBottomTabs(self, tabName):
         self.bottomBarBasicTab.grid_forget()
@@ -983,11 +1053,11 @@ class Main():
         self.bottomBarBasicTab = ImageFrame(self.bottombar, parentBackground="#3d3d3d",file=f"{self.dirPath}\Assets\Buttons\\BasicCanvas.png",bd=0)
         self.bottomBarBasicTab.grid(row=1, column=0, sticky="nesw")
 
-        self.bottomBarBasicTab.grid_columnconfigure(0, weight=1)
-        self.bottomBarBasicTab.grid_columnconfigure(1, weight=2)
-        self.bottomBarBasicTab.grid_columnconfigure(2, weight=2)
-        self.bottomBarBasicTab.grid_columnconfigure(3, weight=20)
-        self.bottomBarBasicTab.grid_columnconfigure(4, weight=1)
+        self.bottomBarBasicTab.grid_columnconfigure(0, weight=1, uniform='row')
+        self.bottomBarBasicTab.grid_columnconfigure(1, weight=2, uniform='row')
+        self.bottomBarBasicTab.grid_columnconfigure(2, weight=5, uniform='row')
+        self.bottomBarBasicTab.grid_columnconfigure(3, weight=20, uniform='row')
+        self.bottomBarBasicTab.grid_columnconfigure(4, weight=1, uniform='row')
 
         self.bottomBarBasicTab.grid_rowconfigure(0, weight=1, uniform='row')
         self.bottomBarBasicTab.grid_rowconfigure(1, weight=1, uniform='row')
@@ -1021,7 +1091,7 @@ class Main():
         autoplayInput = tk.OptionMenu(self.bottomBarBasicTab, self.autoplayInputVar, *["None", "Follow", "Follow When Done"])
         self.autoplayInputVar.trace("w", lambda name, index, mode, var=self.autoplayInputVar: self.cueValueChange("autoplay"))
         autoplayInput.configure(indicatoron=0, compound=tk.RIGHT, image="")
-        autoplayInput.config(borderwidth=0, bg="#2d2c2c", activebackground="#2d2c2c", activeforeground="white", bd=0, fg="white", highlightthickness=0)
+        autoplayInput.config(bg="#2d2c2c", activebackground="#2d2c2c", activeforeground="white", fg="white", highlightthickness=0)
         autoplayInput["menu"].config(bg="#2d2c2c", activebackground="#2d2c2c", activeforeground="white", fg="white")
         autoplayInput.grid(row=4, column=2, sticky="we")
         var = tk.StringVar()
@@ -1035,14 +1105,48 @@ class Main():
         self.targetSelect = tk.Button(self.bottomBarBasicTab, font=(40), bg="#2d2c2c", fg="White",text="Select Target",command=self.selectTargetStart)
 
         self.bottomBarTimeTab = ImageFrame(self.bottombar, parentBackground="#3d3d3d",file=f"{self.dirPath}\Assets\Buttons\\TimeCanvas.png",bd=0)
+        self.bottomBarTimeTab.grid(row=1, column=0, sticky="nesw")
+        self.bottomBarTimeTab.grid_columnconfigure(0, weight=1, uniform='row')
+        self.bottomBarTimeTab.grid_columnconfigure(1, weight=2, uniform='row')
+        self.bottomBarTimeTab.grid_columnconfigure(2, weight=5, uniform='row')
+        self.bottomBarTimeTab.grid_columnconfigure(3, weight=20, uniform='row')
+        self.bottomBarTimeTab.grid_columnconfigure(4, weight=1, uniform='row')
+        self.bottomBarTimeTab.grid_rowconfigure(0, weight=1, uniform='row')
+        self.bottomBarTimeTab.grid_rowconfigure(1, weight=1, uniform='row')
+        self.bottomBarTimeTab.grid_rowconfigure(2, weight=1, uniform='row')
+        self.bottomBarTimeTab.grid_rowconfigure(3, weight=1, uniform='row')
+        self.bottomBarTimeTab.grid_rowconfigure(4, weight=1, uniform='row')
+        self.bottomBarTimeTab.grid_rowconfigure(5, weight=1, uniform='row')
 
-        self.bottomBarTimeTab.grid_columnconfigure(0, weight=1)
-        self.bottomBarTimeTab.grid_columnconfigure(1, weight=1)
-        self.bottomBarTimeTab.grid_columnconfigure(2, weight=10)
-        self.bottomBarTimeTab.grid_rowconfigure(0, weight=1)
-        self.bottomBarTimeTab.grid_rowconfigure(1, weight=1)
-        self.bottomBarTimeTab.grid_rowconfigure(2, weight=1)
-        self.bottomBarTimeTab.grid_rowconfigure(3, weight=1)
+        startLabel = tk.Label(self.bottomBarTimeTab,text="Start Time:", background="#2d2c2c", fg="white")
+        startLabel.grid(row=1, column=1, sticky="nswe")
+        endLabel = tk.Label(self.bottomBarTimeTab, text="End Time:", background="#2d2c2c", fg="white")
+        endLabel.grid(row=2, column=1, sticky="nswe")
+        countLabel = tk.Label(self.bottomBarTimeTab, text="Play Count:", background="#2d2c2c", fg="white")
+        countLabel.grid(row=3, column=1, sticky="nswe")
+        infLabel = tk.Label(self.bottomBarTimeTab, text="Infinite Loop:", background="#2d2c2c", fg="white")
+        infLabel.grid(row=4, column=1, sticky="nswe")
+        var = tk.StringVar()
+        self.startInput = tk.Entry(self.bottomBarTimeTab, textvariable=var, bg="#2d2c2c", fg="white")
+        self.startInput.grid(row=1,column=2,sticky="ew")
+        var = tk.StringVar() 
+        self.endInput = tk.Entry(self.bottomBarTimeTab, textvariable=var, bg="#2d2c2c", fg="white")
+        self.endInput.grid(row=2,column=2,sticky="ew")
+        var = tk.StringVar()
+        self.countInput = tk.Entry(self.bottomBarTimeTab, textvariable=var, bg="#2d2c2c", fg="white")
+        self.countInput.grid(row=3,column=2,sticky="ew")
+        var = tk.IntVar()
+        self.infiniteLoopInput = tk.Checkbutton(self.bottomBarTimeTab,variable=var,onvalue=1,offvalue=0, background="#2d2c2c", fg="white",activebackground="#2d2c2c",activeforeground="white",disabledforeground="#2d2c2c",selectcolor="#2d2c2c")
+        self.infiniteLoopInput.grid(row=4,column=2)
+        self.waveform = ImageFrame(self.bottomBarTimeTab, parentBackground="#3d3d3d",file=f"{self.dirPath}\Assets\Buttons\\blankWaveform.png",bd=0)
+        self.waveform.grid(row=2,column=3,rowspan=3,sticky="nesw",padx=10)
+        trimsliders=tk.Frame(self.bottomBarTimeTab, bg="#3d3d3d", bd=0)
+        trimsliders.grid(row=1,column=3,sticky="nesw",padx=10)
+        self.trimSlider1 = ttk.Scale(trimsliders, from_=0, to=100, orient="horizontal",style="trimslider")
+        self.trimSlider1.place(relwidth=1.0,relheight=1.0,relx=0,rely=0)
+
+        self.bottomBarTimeTab.grid_forget()
+
 
         self.bottomBarLevelsTab = ImageFrame(self.bottombar, parentBackground="#3d3d3d",file=f"{self.dirPath}\Assets\Buttons\\LevelsCanvas.png",bd=0)
         self.bottomBarTrimTab = ImageFrame(self.bottombar, parentBackground="#3d3d3d",file=f"{self.dirPath}\Assets\Buttons\\TrimCanvas.png",bd=0)
