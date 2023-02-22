@@ -653,7 +653,7 @@ class Main():
         if q.effect:
             # self.fileInput.config(text="",state="disabled")
             self.fileInput.grid_forget()
-            self.targetSelect.grid(row=3, column=2, sticky=("ew"), padx=10)
+            self.targetSelect.grid(row=4, column=3, sticky=("ew"), padx=10)
             d=f"{(q.duration):.3f}"
             self.durationInput.config(state="normal")
             self.durationInput.delete(0, "end")
