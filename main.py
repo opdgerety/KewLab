@@ -428,7 +428,8 @@ class Main():
 
     def onCloseWindow(self):
         for fileName in os.listdir(f"{self.dirPath}\LocalFiles"):
-            os.remove(f"{self.dirPath}\LocalFiles\{fileName}")
+            if "filler" not in fileName:
+                os.remove(f"{self.dirPath}\LocalFiles\{fileName}")
         self.tk.destroy()
 
     def setTreeColour(self) -> None:
@@ -473,7 +474,7 @@ class Main():
             if q and q.path:
                 files.append(q.path.replace("\\","/").split('/')[-1])
         for fileName in os.listdir(f"{self.dirPath}\LocalFiles"):
-            if fileName not in files:
+            if fileName not in files and "filler" not in fileName:
                 os.remove(f"{self.dirPath}\LocalFiles\{fileName}")
 
     def saveFile(self,path):
@@ -505,7 +506,8 @@ class Main():
         self.deleteAll()
         self.cleanLocalFiles()
         for fileName in os.listdir(f"{self.dirPath}\LocalFiles"):
-            os.remove(f"{self.dirPath}\LocalFiles\{fileName}")
+            if "filler" not in fileName:
+                os.remove(f"{self.dirPath}\LocalFiles\{fileName}")
         with open(f"{path}","r") as inputFile:
             data=inputFile.read()
             f=data.split("<<<SectionSeperator>>>")
